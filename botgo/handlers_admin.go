@@ -70,9 +70,15 @@ func (a *App) handleCallback(cb *CallbackQuery) {
 	case data == "admin":
 		a.edit(cb, a.adminSummary(), adminKeyboard())
 	case data == "stats":
-		a.edit(cb, a.statsText(), backAdminKeyboard())
+		a.edit(cb, a.statsText(), statsKeyboard())
+	case data == "stats:storage":
+		a.edit(cb, a.storageMetricsText(false), storageMetricsKeyboard())
+	case data == "stats:storage:refresh":
+		a.edit(cb, a.storageMetricsText(true), storageMetricsKeyboard())
 	case data == "commerce":
 		a.edit(cb, a.commerceText(), commerceKeyboard())
+	case data == "info_admin":
+		a.edit(cb, a.infoAdminText(), infoAdminKeyboard())
 	case strings.HasPrefix(data, "set:"):
 		key := strings.TrimPrefix(data, "set:")
 		a.states.Set(cb.From.ID, State{Kind: StateSetting, Event: key})

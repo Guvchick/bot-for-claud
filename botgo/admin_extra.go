@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,32 +17,40 @@ func (a *App) statsText() string {
 	if err != nil {
 		return "📊 Не удалось получить статистику: <code>" + esc(err.Error()) + "</code>"
 	}
+	conversion := 0.0
+	if stats.UsersApproved > 0 {
+		conversion = float64(stats.PaidApprovedUsers) / float64(stats.UsersApproved) * 100
+	}
 	return fmt.Sprintf(
 		"📊 <b>Статистика</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
 			"👥 Пользователи: <b>%d</b>\n📝 Заявки: <b>%d</b>\n✅ Активные: <b>%d</b>\n❌ Отклоненные: <b>%d</b>\n🔴 Отключенные: <b>%d</b>\n⭐ Премиум: <b>%d</b>\n\n"+
 			"💾 Выдано квоты: <b>%d GB</b>\n\n"+
-			"💳 Платежей: <b>%d</b>\n✅ Подтверждено: <b>%d</b>\n💰 RUB: <b>%d</b>\n\n"+
+			"💳 Платежей: <b>%d</b>\n✅ Подтверждено: <b>%d</b>\n💰 RUB: <b>%d</b>\n💎 Платящих пользователей: <b>%d</b>\n🆓 Бесплатных активных: <b>%d</b>\n📈 Конверсия free→paid: <b>%.1f%%</b>\n⭐ Купили премиум: <b>%d</b>\n💾 Купили место: <b>%d</b>\n\n"+
 			"🎟 Промокодов: <b>%d</b>\n🎁 Использований: <b>%d</b>",
 		stats.UsersTotal, stats.UsersRequested, stats.UsersApproved, stats.UsersRejected, stats.UsersDisabled, stats.SupportersActive,
-		stats.QuotaTotalGB, stats.PaymentsTotal, stats.PaymentsConfirmed, stats.PaymentsRub, stats.PromoCodesTotal, stats.PromoUsesTotal,
+		stats.QuotaTotalGB, stats.PaymentsTotal, stats.PaymentsConfirmed, stats.PaymentsRub, stats.PaidApprovedUsers, stats.FreeApprovedUsers, conversion, stats.PremiumBuyers, stats.StorageBuyers,
+		stats.PromoCodesTotal, stats.PromoUsesTotal,
 	)
 }
 
 func (a *App) commerceText() string {
 	return fmt.Sprintf(
 		"💾 <b>Продажи и триал</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
-			"Пакет места: <b>%d GB</b>\nЦена пакета: <b>%d RUB</b>\nСкидка премиум: <b>%d%%</b>\n\n"+
+			"Продажа доп. GB: <b>%s</b>\nПакет места: <b>%d GB</b>\nЦена пакета: <b>%d RUB</b>\nСкидка премиум: <b>%d%%</b>\n\n"+
 			"Триал: <b>%s</b>\nКвота триала: <b>%d GB</b>\nДней премиума: <b>%d</b>",
-		a.storagePackGB(), a.storagePackPrice(), a.premiumDiscount(),
+		mapBool(a.storageSalesEnabled(), "включена", "выключена"), a.storagePackGB(), a.storagePackPrice(), a.premiumDiscount(),
 		mapBool(a.trialEnabled(), "включен", "выключен"), a.trialQuotaGB(), a.trialPremiumDays(),
 	)
 }
 
-func (a *App) storagePackGB() int { return a.db.SettingInt("storage_pack_gb", 10) }
+func (a *App) storagePackGB() int    { return a.db.SettingInt("storage_pack_gb", 10) }
 func (a *App) storagePackPrice() int { return a.db.SettingInt("storage_pack_price_rub", 100) }
-func (a *App) premiumDiscount() int { return a.db.SettingInt("premium_discount_percent", 0) }
-func (a *App) trialEnabled() bool { return a.db.SettingBool("trial_enabled", false) }
-func (a *App) trialQuotaGB() int { return a.db.SettingInt("trial_quota_gb", a.cfg.DefaultQuotaGB) }
+func (a *App) premiumDiscount() int  { return a.db.SettingInt("premium_discount_percent", 0) }
+func (a *App) storageSalesEnabled() bool {
+	return a.db.SettingBool("storage_sales_enabled", true)
+}
+func (a *App) trialEnabled() bool    { return a.db.SettingBool("trial_enabled", false) }
+func (a *App) trialQuotaGB() int     { return a.db.SettingInt("trial_quota_gb", a.cfg.DefaultQuotaGB) }
 func (a *App) trialPremiumDays() int { return a.db.SettingInt("trial_premium_days", 0) }
 
 func (a *App) approvalQuotaGB() int {
@@ -71,7 +80,7 @@ func (a *App) parseSettingInput(key, value string) (string, error) {
 		return "", fmt.Errorf("empty value")
 	}
 	switch key {
-	case "maintenance_enabled", "trial_enabled":
+	case "maintenance_enabled", "trial_enabled", "storage_sales_enabled":
 		raw := strings.ToLower(value)
 		if raw == "1" || raw == "true" || raw == "on" || raw == "yes" || raw == "да" {
 			return "true", nil
@@ -95,6 +104,122 @@ func (a *App) parseSettingInput(key, value string) (string, error) {
 	default:
 		return value, nil
 	}
+}
+
+type storageMetricRow struct {
+	User      User
+	Used      int64
+	Available int64
+	Percent   float64
+	Err       error
+}
+
+func (a *App) storageMetricsText(fresh bool) string {
+	users, err := a.db.ListUsers("approved", 100000, 0)
+	if err != nil {
+		return "💾 Не удалось получить пользователей: <code>" + esc(err.Error()) + "</code>"
+	}
+	rows := make([]storageMetricRow, 0, len(users))
+	checked := 0
+	skipped := 0
+	failed := 0
+	var totalUsed int64
+	var knownUsed int64
+	var totalAvailable int64
+	knownQuotaUsers := 0
+	for _, user := range users {
+		if user.NCUserID == nil || user.NCPassword == nil {
+			skipped++
+			continue
+		}
+		used, available, err := a.userQuota(&user, fresh)
+		row := storageMetricRow{User: user, Used: used, Available: available, Err: err}
+		if err != nil {
+			failed++
+			rows = append(rows, row)
+			continue
+		}
+		checked++
+		if used > 0 {
+			totalUsed += used
+		}
+		if available >= 0 {
+			knownQuotaUsers++
+			if used > 0 {
+				knownUsed += used
+			}
+			totalAvailable += available
+			total := used + available
+			if total > 0 {
+				row.Percent = float64(used) / float64(total) * 100
+			}
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Err != nil || rows[j].Err != nil {
+			return rows[i].Err == nil
+		}
+		if rows[i].Percent == rows[j].Percent {
+			return rows[i].Used > rows[j].Used
+		}
+		return rows[i].Percent > rows[j].Percent
+	})
+	quotaLine := "нет данных"
+	if knownQuotaUsers > 0 {
+		quotaLine = fmt.Sprintf("%s / %s", formatBytes(knownUsed), formatBytes(knownUsed+totalAvailable))
+		if knownQuotaUsers != checked {
+			quotaLine += fmt.Sprintf(" (%d/%d пользователей)", knownQuotaUsers, checked)
+		}
+	}
+	mode := "кеш"
+	if fresh {
+		mode = "обновлено"
+	}
+	text := fmt.Sprintf(
+		"💾 <b>Место пользователей</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
+			"Режим: <b>%s</b>\nПроверено: <b>%d</b>\nОшибок: <b>%d</b>\nБез WebDAV-пароля: <b>%d</b>\nВсего занято: <b>%s</b>\nИзвестная квота: <b>%s</b>\n\n",
+		mode, checked, failed, skipped, formatBytes(totalUsed), quotaLine,
+	)
+	if len(rows) == 0 {
+		return text + "Пока нет одобренных пользователей с данными облака."
+	}
+	limit := 20
+	if len(rows) < limit {
+		limit = len(rows)
+	}
+	text += fmt.Sprintf("<b>Пользователи, топ %d по заполненности</b>\n", limit)
+	for i := 0; i < limit; i++ {
+		row := rows[i]
+		name := displayName(&row.User)
+		if row.Err != nil {
+			text += fmt.Sprintf("%d. %s · ошибка: <code>%s</code>\n", i+1, name, esc(shortText(row.Err.Error(), 80)))
+			continue
+		}
+		if row.Available >= 0 {
+			total := row.Used + row.Available
+			text += fmt.Sprintf("%d. %s · <b>%s</b> / <b>%s</b> · свободно <b>%s</b> · %.1f%%\n", i+1, name, formatBytes(row.Used), formatBytes(total), formatBytes(row.Available), row.Percent)
+			continue
+		}
+		text += fmt.Sprintf("%d. %s · занято <b>%s</b> · свободно <b>%s</b>\n", i+1, name, formatBytes(row.Used), formatBytes(row.Available))
+	}
+	return text
+}
+
+func (a *App) infoAdminText() string {
+	raw := shortText(a.content.messageRaw("info"), 1200)
+	return "<b>ℹ️ Инфо-раздел</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n" +
+		"Пользователь видит этот раздел по кнопке <b>" + esc(a.content.Button("info_ru")) + "</b> / <b>" + esc(a.content.Button("info_en")) + "</b> в своем кабинете.\n\n" +
+		"Фото: <b>" + mapBool(a.content.Photo("info") != "", "задано", "нет") + "</b>\n\n" +
+		"Текущий текст:\n<code>" + esc(raw) + "</code>"
+}
+
+func shortText(value string, limit int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit]) + "\n..."
 }
 
 func (a *App) promoListText() string {

@@ -550,8 +550,15 @@ func (db *DB) Stats() (*BotStats, error) {
 	_ = db.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM payments").Scan(&stats.PaymentsTotal)
 	_ = db.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM payments WHERE status IN ('CONFIRMED', 'FULFILLED')").Scan(&stats.PaymentsConfirmed)
 	_ = db.db.QueryRowContext(ctx, "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status IN ('CONFIRMED', 'FULFILLED') AND currency = 'RUB'").Scan(&stats.PaymentsRub)
+	_ = db.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT p.telegram_id) FROM payments p JOIN users u ON u.telegram_id = p.telegram_id WHERE p.status IN ('CONFIRMED', 'FULFILLED') AND u.status = 'approved'`).Scan(&stats.PaidApprovedUsers)
+	_ = db.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT telegram_id) FROM payments WHERE status IN ('CONFIRMED', 'FULFILLED') AND payload LIKE 'storage:%'").Scan(&stats.StorageBuyers)
+	_ = db.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT telegram_id) FROM payments WHERE status IN ('CONFIRMED', 'FULFILLED') AND payload LIKE '%donate:%'").Scan(&stats.PremiumBuyers)
 	_ = db.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM promo_codes").Scan(&stats.PromoCodesTotal)
 	_ = db.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM promo_uses").Scan(&stats.PromoUsesTotal)
+	stats.FreeApprovedUsers = stats.UsersApproved - stats.PaidApprovedUsers
+	if stats.FreeApprovedUsers < 0 {
+		stats.FreeApprovedUsers = 0
+	}
 	return stats, nil
 }
 

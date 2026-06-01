@@ -64,8 +64,8 @@ type Config struct {
 	TelegramBotPathPrefix        string
 	ContentStoreFile             string
 	LogLevel                     string
-	NotifyAdminsOnStart         bool
-	NotifyAdminsOnCrash         bool
+	NotifyAdminsOnStart          bool
+	NotifyAdminsOnCrash          bool
 }
 
 type App struct {
@@ -139,6 +139,10 @@ type BotStats struct {
 	PaymentsTotal     int
 	PaymentsConfirmed int
 	PaymentsRub       int
+	PaidApprovedUsers int
+	FreeApprovedUsers int
+	StorageBuyers     int
+	PremiumBuyers     int
 	PromoCodesTotal   int
 	PromoUsesTotal    int
 }

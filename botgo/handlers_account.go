@@ -63,6 +63,10 @@ func (a *App) accountDonate(cb *CallbackQuery) {
 }
 
 func (a *App) accountBuyStorage(cb *CallbackQuery) {
+	if !a.storageSalesEnabled() {
+		a.edit(cb, "💾 <b>Докупить место</b>\n\nПродажа дополнительных гигабайтов сейчас отключена. Премиум остается доступен в разделе доната.", accountBackKeyboard())
+		return
+	}
 	user, err := a.db.GetUser(cb.From.ID)
 	if err != nil || user == nil || user.Status != "approved" {
 		a.tg.AnswerCallback(cb.ID, "Доступ не активен", true)
@@ -174,6 +178,10 @@ func (a *App) plategaCreate(cb *CallbackQuery) {
 func (a *App) storageBuyCallback(cb *CallbackQuery) {
 	if !a.cfg.EnableDonateBlock {
 		a.tg.AnswerCallback(cb.ID, "Оплата отключена", true)
+		return
+	}
+	if !a.storageSalesEnabled() {
+		a.tg.AnswerCallback(cb.ID, "Продажа места отключена", true)
 		return
 	}
 	user, err := a.db.GetUser(cb.From.ID)

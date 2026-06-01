@@ -12,7 +12,8 @@ func adminKeyboard() *InlineKeyboardMarkup {
 		{{Text: "📊 Статистика", CallbackData: "stats"}, {Text: "☁️ Админ cloud", CallbackData: "admincloud"}},
 		{{Text: "💾 Продажи", CallbackData: "commerce"}, {Text: "🎟 Промокоды", CallbackData: "promos"}},
 		{{Text: "📣 Рассылка", CallbackData: "broadcast"}, {Text: "🔄 Синхр./восстановление", CallbackData: "maintenance"}},
-		{{Text: "✏️ Тексты и кнопки", CallbackData: "content"}, {Text: "✨ Стикеры", CallbackData: "stickers"}},
+		{{Text: "ℹ️ Инфо", CallbackData: "info_admin"}, {Text: "✏️ Тексты и кнопки", CallbackData: "content"}},
+		{{Text: "✨ Стикеры", CallbackData: "stickers"}},
 	})
 }
 
@@ -38,7 +39,12 @@ func (a *App) accountKeyboard(lang string) *InlineKeyboardMarkup {
 	info := a.content.Button("info_" + suffix)
 	language := a.content.Button("language_" + suffix)
 	rows := [][]InlineKeyboardButton{{{Text: cloud, URL: a.cfg.NextcloudURL}}, {{Text: changePassword, CallbackData: "account:change_password"}}}
-	rows = append(rows, []InlineKeyboardButton{{Text: buyStorage, CallbackData: "account:buy_storage"}, {Text: promo, CallbackData: "account:promo"}})
+	storagePromo := []InlineKeyboardButton{}
+	if a.storageSalesEnabled() {
+		storagePromo = append(storagePromo, InlineKeyboardButton{Text: buyStorage, CallbackData: "account:buy_storage"})
+	}
+	storagePromo = append(storagePromo, InlineKeyboardButton{Text: promo, CallbackData: "account:promo"})
+	rows = append(rows, storagePromo)
 	if a.cfg.EnableSupportBlock {
 		rows = append(rows, []InlineKeyboardButton{{Text: support, CallbackData: "account:support"}})
 	}
@@ -176,6 +182,20 @@ func paymentLinkKeyboard(paymentURL, transactionID, back string) *InlineKeyboard
 	})
 }
 
+func statsKeyboard() *InlineKeyboardMarkup {
+	return keyboard([][]InlineKeyboardButton{
+		{{Text: "💾 Место пользователей", CallbackData: "stats:storage"}},
+		{{Text: "🛠️ В админку", CallbackData: "admin"}},
+	})
+}
+
+func storageMetricsKeyboard() *InlineKeyboardMarkup {
+	return keyboard([][]InlineKeyboardButton{
+		{{Text: "🔄 Обновить из Nextcloud", CallbackData: "stats:storage:refresh"}},
+		{{Text: "⬅️ Статистика", CallbackData: "stats"}, {Text: "🛠️ В админку", CallbackData: "admin"}},
+	})
+}
+
 func buyStorageKeyboard(cfg Config) *InlineKeyboardMarkup {
 	rows := [][]InlineKeyboardButton{}
 	if cfg.PlategaVisible() {
@@ -285,11 +305,21 @@ func maintenanceKeyboard() *InlineKeyboardMarkup {
 
 func commerceKeyboard() *InlineKeyboardMarkup {
 	return keyboard([][]InlineKeyboardButton{
+		{{Text: "💾 Продажа GB on/off", CallbackData: "set:storage_sales_enabled"}},
 		{{Text: "💾 GB в пакете", CallbackData: "set:storage_pack_gb"}, {Text: "💰 Цена RUB", CallbackData: "set:storage_pack_price_rub"}},
 		{{Text: "⭐ Скидка %", CallbackData: "set:premium_discount_percent"}, {Text: "📝 Описание премиума", CallbackData: "content:message:premium_info"}},
 		{{Text: "🎁 Триал on/off", CallbackData: "set:trial_enabled"}, {Text: "🎁 Квота триала", CallbackData: "set:trial_quota_gb"}},
 		{{Text: "⭐ Дней премиума триала", CallbackData: "set:trial_premium_days"}},
 		{{Text: "🛠️ Техработы on/off", CallbackData: "set:maintenance_enabled"}},
+		{{Text: "🛠️ В админку", CallbackData: "admin"}},
+	})
+}
+
+func infoAdminKeyboard() *InlineKeyboardMarkup {
+	return keyboard([][]InlineKeyboardButton{
+		{{Text: "✏️ Изменить текст", CallbackData: "content:message:info"}},
+		{{Text: "🖼 Фото", CallbackData: "content:photo:info"}, {Text: "🧹 Убрать фото", CallbackData: "content:photoreset:info"}},
+		{{Text: "🔘 Кнопка RU", CallbackData: "content:button:info_ru"}, {Text: "🔘 Button EN", CallbackData: "content:button:info_en"}},
 		{{Text: "🛠️ В админку", CallbackData: "admin"}},
 	})
 }
