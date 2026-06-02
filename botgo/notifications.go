@@ -22,7 +22,7 @@ func (a *App) notifyStartup() {
 		return
 	}
 	text := fmt.Sprintf(
-		"🟢 <b>Бот запущен</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
+		"🟢 <b>Бот запущен</b>\n\n"+
 			"Время: <code>%s</code>\n"+
 			"Облако: <code>%s</code>\n"+
 			"Telegram API: <code>%s</code>\n"+
@@ -48,7 +48,7 @@ func (a *App) notifyCrash(scope string, recovered any, stack []byte) {
 		stackText = string([]rune(stackText)[:2500]) + "\n..."
 	}
 	text := fmt.Sprintf(
-		"🚨 <b>Краш в боте</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
+		"🚨 <b>Краш в боте</b>\n\n"+
 			"Место: <code>%s</code>\n"+
 			"Ошибка: <code>%s</code>\n\n"+
 			"<b>Stack:</b>\n<code>%s</code>",

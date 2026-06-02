@@ -31,9 +31,9 @@ type contentStoreFile struct {
 }
 
 var contentMessages = []ContentItem{
-	{Key: "account_home", Title: "Главное сообщение пользователя", DefaultText: "☁️✨ <b>Ваше облако</b> ✨\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n{premium}🌐 Ссылка: <a href=\"{cloud_url}\">{cloud_url}</a>\n🆔 Логин: <code>{login}</code>\n🔐 Пароль: {password}\n💾 Квота: <b>{quota_gb} GB</b>\n\n{storage}\n\n📤 Отправьте файл в этот чат, и бот загрузит его в облако."},
-	{Key: "access_sent", Title: "Заявка отправлена", DefaultText: "<b>Заявка отправлена ✨</b>\n\nАдминистратор проверит доступ. Я сообщу, когда аккаунт будет готов."},
-	{Key: "approved", Title: "Доступ одобрен", DefaultText: "✅ <b>Доступ открыт</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n🆔 Логин: <code>{login}</code>\n🔐 Пароль: <code>{password}</code>\n💾 Квота: <b>{quota_gb} GB</b>\n\n📤 Файлы можно отправлять прямо сюда: бот загрузит их в облако.\nПароль всегда виден в /start, там же его можно сменить."},
+	{Key: "account_home", Title: "Главное сообщение пользователя", DefaultText: "☁️✨ <b>Ваше облако</b> ✨\n\n{premium}🌐 Ссылка: <a href=\"{cloud_url}\">{cloud_url}</a>\n🆔 Логин: <code>{login}</code>\n🔐 Пароль: {password}\n💾 Квота: <b>{quota_gb} GB</b>\n\n{storage}\n\n📤 Отправьте файл в этот чат, и бот загрузит его в облако."},
+	{Key: "access_sent", Title: "Доступ создается", DefaultText: "<b>Готовлю доступ ✨</b>\n\nСоздаю аккаунт в облаке. Обычно это занимает несколько секунд."},
+	{Key: "approved", Title: "Доступ открыт", DefaultText: "✅ <b>Доступ открыт</b>\n\n🆔 Логин: <code>{login}</code>\n🔐 Пароль: <code>{password}</code>\n💾 Квота: <b>{quota_gb} GB</b>\n\n📤 Файлы можно отправлять прямо сюда: бот загрузит их в облако.\nПароль всегда виден в /start, там же его можно сменить."},
 	{Key: "rejected", Title: "Заявка отклонена", DefaultText: "Ваша заявка сейчас отклонена."},
 	{Key: "support", Title: "Поддержка", DefaultText: "<b>💬 Поддержка</b>\n\n{support_contacts}"},
 	{Key: "donate", Title: "Донат", DefaultText: "<b>💙 Поддержать проект</b>\n\nМожно поддержать проект через Telegram Stars, Platega, Pally, CryptoBot, Heleket или внешнюю ссылку.\nВыберите способ поддержки."},

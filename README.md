@@ -1,12 +1,12 @@
 # Telegram Nextcloud Bot
 
-Бот принимает заявки на доступ к облаку, отправляет их администраторам Telegram, создает пользователя в Nextcloud после одобрения, выдает логин/пароль и выставляет стартовую квоту.
+Бот открывает пользователю доступ к облаку по `/start`, создает пользователя в Nextcloud, выдает логин/пароль и выставляет стартовую квоту.
 
 ## Что умеет
 
-- `/start` для пользователя создает заявку и отправляет ее админам.
-- Админ одобряет или отклоняет заявку прямо из Telegram.
-- После одобрения бот создает или обновляет Nextcloud-пользователя с логином, равным Telegram ID, генерирует пароль и выставляет квоту.
+- `/start` для пользователя автоматически создает или восстанавливает доступ.
+- Админ может вручную одобрить или отклонить старую заявку прямо из Telegram.
+- При выдаче доступа бот создает или обновляет Nextcloud-пользователя с логином, равным Telegram ID, генерирует пароль и выставляет квоту.
 - Админ-панель показывает пользователей, заявки, статусы и квоты.
 - В админ-панели есть поиск по Telegram ID и Telegram-тегу.
 - Админ видит актуально занятое место пользователя в Nextcloud.
@@ -101,8 +101,8 @@ PLATEGA_MERCHANT_ID=
 PLATEGA_SECRET=
 PLATEGA_BASE_URL=https://app.platega.io
 PLATEGA_AMOUNTS_RUB=100,300,500
-PLATEGA_RETURN_URL=
-PLATEGA_FAILED_URL=
+PLATEGA_RETURN_URL=https://your-domain.example/payments/success
+PLATEGA_FAILED_URL=https://your-domain.example/payments/fail
 PLATEGA_CALLBACK_URL=
 PUBLIC_WEBHOOK_BASE_URL=https://your-domain.example
 WEBHOOK_LISTEN_ADDR=:8088
@@ -198,11 +198,20 @@ Telegram-бот запускается как Go-бинарник из `botgo` �
 
 `PLATEGA_CALLBACK_URL` - публичный URL вебхука Platega, например `https://your-domain.example/webhooks/platega`. Такой же URL нужно указать в личном кабинете Platega в Callback URLs. `PUBLIC_WEBHOOK_BASE_URL` - публичный домен без пути, из него бот собирает callback URL для провайдеров с отдельными путями. Бот слушает `WEBHOOK_LISTEN_ADDR`, пути задаются `PLATEGA_WEBHOOK_PATH`, `PALLY_CALLBACK_PATH`, `CRYPTOBOT_WEBHOOK_PATH`, `HELEKET_WEBHOOK_PATH`, а `WEBHOOK_PORT` пробрасывается из docker-compose наружу.
 
-Pally: заполните `PALLY_TOKEN` и `PALLY_SHOP_ID`, а в кабинете Pally укажите postback URL `https://your-domain.example/webhooks/pally`. Бот проверяет `SignatureValue` по формуле из документации Pally.
+Pally: заполните `PALLY_TOKEN` и `PALLY_SHOP_ID`, а в кабинете Pally в `Shop links` укажите:
+
+- `Domain`: `your-domain.example`
+- `Success URL`: `https://your-domain.example/payments/success`
+- `Fail URL`: `https://your-domain.example/payments/fail`
+- `Result URL`: `https://your-domain.example/webhooks/pally`
+- `Refund URL`: можно оставить пустым, если поле необязательное; если Pally требует URL, укажите `https://your-domain.example/webhooks/pally`
+- `Chargeback URL`: можно оставить пустым, если поле необязательное; если Pally требует URL, укажите `https://your-domain.example/webhooks/pally`
+
+`Result URL` уже есть в боте: это webhook `PALLY_CALLBACK_PATH`, по умолчанию `/webhooks/pally`. Бот проверяет `SignatureValue` по формуле из документации Pally.
 
 CryptoBot / Crypto Pay: заполните `CRYPTOBOT_TOKEN`, а в @CryptoBot включите Webhooks и укажите URL с секретным путем, например `https://your-domain.example/webhooks/cryptobot-very-secret`. Такой же путь пропишите в `CRYPTOBOT_WEBHOOK_PATH`. Бот проверяет заголовок `crypto-pay-api-signature`.
 
-Heleket: заполните `HELEKET_MERCHANT_ID` и `HELEKET_API_KEY`. При создании счета бот передает `url_callback`, собранный из `PUBLIC_WEBHOOK_BASE_URL` и `HELEKET_WEBHOOK_PATH`; для удобства можно оставить тот же домен и другой путь, например `/webhooks/heleket`.
+Heleket: заполните `HELEKET_MERCHANT_ID` и `HELEKET_API_KEY`. При создании счета бот передает `url_callback`, собранный из `PUBLIC_WEBHOOK_BASE_URL` и `HELEKET_WEBHOOK_PATH`; при `PUBLIC_WEBHOOK_BASE_URL=https://your-domain.example` получится `https://your-domain.example/webhooks/heleket`. Для страницы возврата после оплаты используется `PLATEGA_RETURN_URL`, например `https://your-domain.example/payments/success`.
 
 `TELEGRAM_MAX_DOWNLOAD_MB` - лимит скачивания через Bot API. Для публичного `api.telegram.org` оставляйте около `20`; для локального Bot API в `--local` режиме можно ставить до `2000`.
 
@@ -232,7 +241,7 @@ docker compose up -d --build
 
 ## Команды
 
-- `/start` - для пользователя отправляет заявку на доступ, для админа открывает панель.
+- `/start` - для пользователя автоматически выдает доступ, для админа открывает панель.
 - `/admin` - открывает админ-панель.
 - `/health` - проверяет, может ли бот достучаться до Nextcloud API.
 - `/sync` - вручную сверяет базу бота с Nextcloud и удаляет из бота отсутствующих Nextcloud-пользователей.

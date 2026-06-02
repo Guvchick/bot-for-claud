@@ -20,11 +20,35 @@ func (a *App) startWebhookServer() {
 	mux.HandleFunc(a.cfg.PallyCallbackPath, a.recoverHTTP("pally", a.pallyWebhook))
 	mux.HandleFunc(a.cfg.CryptoBotWebhookPath, a.recoverHTTP("cryptobot", a.cryptoBotWebhook))
 	mux.HandleFunc(a.cfg.HeleketWebhookPath, a.recoverHTTP("heleket", a.heleketWebhook))
+	mux.HandleFunc("/payments/success", paymentLanding("Оплата прошла", "Спасибо! Платеж подтверждается платежной системой. Вернитесь в Telegram и нажмите «Проверить оплату», если доступ еще не обновился."))
+	mux.HandleFunc("/payments/fail", paymentLanding("Оплата не завершена", "Платеж не прошел или был отменен. Вернитесь в Telegram и попробуйте еще раз."))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	log.Printf("webhook server listening: addr=%s platega_path=%s pally_path=%s cryptobot_path=%s heleket_path=%s callback_url=%s", a.cfg.WebhookListenAddr, a.cfg.PlategaWebhookPath, a.cfg.PallyCallbackPath, a.cfg.CryptoBotWebhookPath, a.cfg.HeleketWebhookPath, a.cfg.PlategaCallbackURL)
 	if err := http.ListenAndServe(a.cfg.WebhookListenAddr, mux); err != nil {
 		log.Printf("webhook server stopped: %v", err)
 		a.notifyAdmins("🔴 <b>Webhook-сервер остановился</b>\n\nОшибка: <code>" + esc(err.Error()) + "</code>")
+	}
+}
+
+func paymentLanding(title, message string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(w, `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%s</title>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f6f8fb;color:#20242a}
+main{min-height:100vh;display:grid;place-items:center;padding:24px}
+section{max-width:520px;background:#fff;border:1px solid #e6eaf0;border-radius:12px;padding:28px;box-shadow:0 12px 32px rgba(31,45,61,.08)}
+h1{margin:0 0 12px;font-size:28px;line-height:1.2}
+p{margin:0;font-size:17px;line-height:1.5;color:#566170}
+</style>
+</head>
+<body><main><section><h1>%s</h1><p>%s</p></section></main></body>
+</html>`, esc(title), esc(title), esc(message))
 	}
 }
 

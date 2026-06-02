@@ -20,30 +20,28 @@ func (a *App) start(msg *Message) {
 		return
 	}
 	if user.Status == "approved" {
+		needsProvision := user.NCUserID == nil || user.NCPassword == nil
 		if user.NCUserID != nil {
 			exists, err := a.nc.UserExists(*user.NCUserID)
 			if err == nil && !exists {
-				_ = a.db.DeleteUser(user.TelegramID)
-				_, _ = a.tg.SendMessage(msg.Chat.ID, "Аккаунт не найден в облаке, запись бота очищена. Отправьте /start еще раз.", nil)
-				return
+				needsProvision = true
 			}
 		}
-		_ = a.sendEventSticker(msg.Chat.ID, "welcome")
-		_, _ = a.tg.SendMessage(msg.Chat.ID, a.accountText(user), a.accountKeyboard(langOf(user)))
-		return
-	}
-	if user.Status == "rejected" {
-		_, _ = a.sendContent(msg.Chat.ID, "rejected", nil, nil)
-		return
+		if !needsProvision {
+			_ = a.sendEventSticker(msg.Chat.ID, "welcome")
+			_, _ = a.tg.SendMessage(msg.Chat.ID, a.accountText(user), a.accountKeyboard(langOf(user)))
+			return
+		}
 	}
 	_, _ = a.sendContent(msg.Chat.ID, "access_sent", nil, nil)
-	for adminID := range a.cfg.AdminIDs {
-		text := "<b>Новая заявка на доступ</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n" +
-			"Пользователь: " + displayName(user) + "\n" +
-			fmt.Sprintf("Telegram ID: <code>%d</code>", user.TelegramID)
-		_, _ = a.tg.SendMessage(adminID, text, requestReviewKeyboard(user.TelegramID))
+	approved, ncUserID, password, quota, err := a.provisionUserAccess(user.TelegramID)
+	if err != nil {
+		_, _ = a.tg.SendMessage(msg.Chat.ID, "⚠️ Не удалось создать доступ: <code>"+esc(err.Error())+"</code>", nil)
+		log.Printf("auto access failed: telegram_id=%d username=%s err=%v", msg.From.ID, msg.From.Username, err)
+		return
 	}
-	log.Printf("access request: telegram_id=%d username=%s", msg.From.ID, msg.From.Username)
+	a.sendAccessOpened(msg.Chat.ID, approved, ncUserID, password, quota)
+	log.Printf("user auto approved: telegram_id=%d nc_user_id=%s", msg.From.ID, ncUserID)
 }
 
 func (a *App) handleCallback(cb *CallbackQuery) {
@@ -259,16 +257,16 @@ func (a *App) adminSummary() string {
 	requested, _ := a.db.CountUsers("requested")
 	approved, _ := a.db.CountUsers("approved")
 	rejected, _ := a.db.CountUsers("rejected")
-	return fmt.Sprintf("<b>🛠️ Админ-панель облака</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n👥 Всего пользователей: <b>%d</b>\n📝 Заявок: <b>%d</b>\n✅ Одобрено: <b>%d</b>\n❌ Отклонено: <b>%d</b>", total, requested, approved, rejected)
+	return fmt.Sprintf("<b>🛠️ Админ-панель облака</b>\n\n👥 Всего пользователей: <b>%d</b>\n📝 Заявок: <b>%d</b>\n✅ Одобрено: <b>%d</b>\n❌ Отклонено: <b>%d</b>", total, requested, approved, rejected)
 }
 
 func (a *App) maintenanceText() string {
-	return "🔄 <b>Синхронизация и восстановление</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n" +
+	return "🔄 <b>Синхронизация и восстановление</b>\n\n" +
 		"Здесь проверяется связь с облаком, синхронизируются пользователи и управляются сжатые бекапы PostgreSQL."
 }
 
 func (a *App) contentText() string {
-	return "✏️ <b>Тексты и кнопки</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n" +
+	return "✏️ <b>Тексты и кнопки</b>\n\n" +
 		"Здесь можно менять сообщения пользователям и названия кнопок прямо из Telegram.\n\n" +
 		"HTML и эмодзи разрешены. Для динамических данных используйте плейсхолдеры вроде <code>{login}</code>, <code>{password}</code>, <code>{storage}</code>."
 }
@@ -609,6 +607,37 @@ func (a *App) userDetailsView(id int64, backStatus string, backPage int) (string
 	return text, userKeyboard(user, backStatus, backPage), nil
 }
 
+func (a *App) provisionUserAccess(id int64) (*User, string, string, int, error) {
+	ncUserID := strconv.FormatInt(id, 10)
+	password := generatePassword(18)
+	quota := a.approvalQuotaGB()
+	if err := a.nc.EnsureUser(ncUserID, password, quota); err != nil {
+		return nil, "", "", 0, err
+	}
+	if err := a.db.ApproveUser(id, ncUserID, password, quota); err != nil {
+		return nil, "", "", 0, err
+	}
+	if a.trialEnabled() && a.trialPremiumDays() > 0 {
+		until := time.Now().UTC().Add(time.Duration(a.trialPremiumDays()) * 24 * time.Hour).Format(time.RFC3339)
+		_ = a.db.SetSupporter(id, true, &until)
+	}
+	approved, _ := a.db.GetUser(id)
+	return approved, ncUserID, password, quota, nil
+}
+
+func (a *App) sendAccessOpened(chatID int64, user *User, ncUserID, password string, quota int) {
+	_ = a.sendEventSticker(chatID, "approved")
+	_, _ = a.sendContent(chatID,
+		"approved",
+		map[string]string{
+			"login":    esc(ncUserID),
+			"password": esc(password),
+			"quota_gb": strconv.Itoa(quota),
+		},
+		a.accountKeyboard(langOf(user)),
+	)
+}
+
 func (a *App) approveUser(cb *CallbackQuery) {
 	id := parseLastInt(cb.Data)
 	user, err := a.db.GetUser(id)
@@ -616,33 +645,13 @@ func (a *App) approveUser(cb *CallbackQuery) {
 		a.tg.AnswerCallback(cb.ID, "Пользователь не найден", true)
 		return
 	}
-	ncUserID := strconv.FormatInt(id, 10)
-	password := generatePassword(18)
-	quota := a.approvalQuotaGB()
-	if err := a.nc.EnsureUser(ncUserID, password, quota); err != nil {
-		a.tg.AnswerCallback(cb.ID, "Ошибка Nextcloud", true)
+	approved, ncUserID, password, quota, err := a.provisionUserAccess(id)
+	if err != nil {
+		a.tg.AnswerCallback(cb.ID, "Ошибка выдачи доступа", true)
 		_, _ = a.tg.SendMessage(cb.Message.Chat.ID, "Не удалось выдать доступ: <code>"+esc(err.Error())+"</code>", nil)
 		return
 	}
-	if err := a.db.ApproveUser(id, ncUserID, password, quota); err != nil {
-		a.tg.AnswerCallback(cb.ID, "Ошибка базы", true)
-		return
-	}
-	if a.trialEnabled() && a.trialPremiumDays() > 0 {
-		until := time.Now().UTC().Add(time.Duration(a.trialPremiumDays()) * 24 * time.Hour).Format(time.RFC3339)
-		_ = a.db.SetSupporter(id, true, &until)
-	}
-	approved, _ := a.db.GetUser(id)
-	_ = a.sendEventSticker(id, "approved")
-	_, _ = a.sendContent(id,
-		"approved",
-		map[string]string{
-			"login":    esc(ncUserID),
-			"password": esc(password),
-			"quota_gb": strconv.Itoa(quota),
-		},
-		a.accountKeyboard(langOf(approved)),
-	)
+	a.sendAccessOpened(id, approved, ncUserID, password, quota)
 	a.edit(cb, fmt.Sprintf("✅ Доступ выдан пользователю <code>%d</code>: %d GB.", id, quota), adminKeyboard())
 	log.Printf("user approved: telegram_id=%d nc_user_id=%s", id, ncUserID)
 }

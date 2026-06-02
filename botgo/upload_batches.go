@@ -214,7 +214,7 @@ func (b *UploadBatch) renderLocked(footer string) string {
 			titleIcon = "✅"
 		}
 	}
-	text := fmt.Sprintf("%s <b>Загрузка файлов</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n", titleIcon)
+	text := fmt.Sprintf("%s <b>Загрузка файлов</b>\n\n", titleIcon)
 	if total == 0 {
 		text += "Очередь пустая."
 	} else {

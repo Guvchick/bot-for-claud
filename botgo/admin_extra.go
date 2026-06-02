@@ -22,7 +22,7 @@ func (a *App) statsText() string {
 		conversion = float64(stats.PaidApprovedUsers) / float64(stats.UsersApproved) * 100
 	}
 	return fmt.Sprintf(
-		"📊 <b>Статистика</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
+		"📊 <b>Статистика</b>\n\n"+
 			"👥 Пользователи: <b>%d</b>\n📝 Заявки: <b>%d</b>\n✅ Активные: <b>%d</b>\n❌ Отклоненные: <b>%d</b>\n🔴 Отключенные: <b>%d</b>\n⭐ Премиум: <b>%d</b>\n\n"+
 			"💾 Выдано квоты: <b>%d GB</b>\n\n"+
 			"💳 Платежей: <b>%d</b>\n✅ Подтверждено: <b>%d</b>\n💰 RUB: <b>%d</b>\n💎 Платящих пользователей: <b>%d</b>\n🆓 Бесплатных активных: <b>%d</b>\n📈 Конверсия free→paid: <b>%.1f%%</b>\n⭐ Купили премиум: <b>%d</b>\n💾 Купили место: <b>%d</b>\n\n"+
@@ -35,7 +35,7 @@ func (a *App) statsText() string {
 
 func (a *App) commerceText() string {
 	return fmt.Sprintf(
-		"💾 <b>Продажи и триал</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
+		"💾 <b>Продажи и триал</b>\n\n"+
 			"Продажа доп. GB: <b>%s</b>\nПакет места: <b>%d GB</b>\nЦена пакета: <b>%d RUB</b>\nСкидка премиум: <b>%d%%</b>\n\n"+
 			"Триал: <b>%s</b>\nКвота триала: <b>%d GB</b>\nДней премиума: <b>%d</b>",
 		mapBool(a.storageSalesEnabled(), "включена", "выключена"), a.storagePackGB(), a.storagePackPrice(), a.premiumDiscount(),
@@ -177,7 +177,7 @@ func (a *App) storageMetricsText(fresh bool) string {
 		mode = "обновлено"
 	}
 	text := fmt.Sprintf(
-		"💾 <b>Место пользователей</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"+
+		"💾 <b>Место пользователей</b>\n\n"+
 			"Режим: <b>%s</b>\nПроверено: <b>%d</b>\nОшибок: <b>%d</b>\nБез WebDAV-пароля: <b>%d</b>\nВсего занято: <b>%s</b>\nИзвестная квота: <b>%s</b>\n\n",
 		mode, checked, failed, skipped, formatBytes(totalUsed), quotaLine,
 	)
@@ -208,7 +208,7 @@ func (a *App) storageMetricsText(fresh bool) string {
 
 func (a *App) infoAdminText() string {
 	raw := shortText(a.content.messageRaw("info"), 1200)
-	return "<b>ℹ️ Инфо-раздел</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n" +
+	return "<b>ℹ️ Инфо-раздел</b>\n\n" +
 		"Пользователь видит этот раздел по кнопке <b>" + esc(a.content.Button("info_ru")) + "</b> / <b>" + esc(a.content.Button("info_en")) + "</b> в своем кабинете.\n\n" +
 		"Фото: <b>" + mapBool(a.content.Photo("info") != "", "задано", "нет") + "</b>\n\n" +
 		"Текущий текст:\n<code>" + esc(raw) + "</code>"
@@ -227,7 +227,7 @@ func (a *App) promoListText() string {
 	if err != nil {
 		return "🎟 Не удалось получить промокоды: <code>" + esc(err.Error()) + "</code>"
 	}
-	text := "🎟 <b>Промокоды</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
+	text := "🎟 <b>Промокоды</b>\n\n"
 	if len(promos) == 0 {
 		return text + "Пока пусто.\n\nФормат создания: <code>CODE 10 30 100</code>\nгде 10=GB, 30=дней премиума, 100=макс. использований."
 	}
@@ -261,7 +261,7 @@ func parsePromoCreate(text string) (string, int, int, int, *string, error) {
 }
 
 func formattingText() string {
-	return "🧾 <b>Форматирование текста</b>\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n" +
+	return "🧾 <b>Форматирование текста</b>\n\n" +
 		"Можно использовать HTML Telegram:\n" +
 		"<code>&lt;b&gt;жирный&lt;/b&gt;</code>\n" +
 		"<code>&lt;i&gt;курсив&lt;/i&gt;</code>\n" +
