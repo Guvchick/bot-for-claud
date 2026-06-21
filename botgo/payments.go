@@ -264,7 +264,8 @@ func (a *App) fulfillPayment(transactionID string) error {
 	case "platega_donate", "pally_donate", "cryptobot_donate", "heleket_donate", "donate":
 		until := time.Now().UTC().Add(time.Duration(a.cfg.PremiumDays) * 24 * time.Hour).Format(time.RFC3339)
 		_ = a.db.SetSupporter(payment.TelegramID, true, &until)
-		_, _ = a.tg.SendMessage(payment.TelegramID, "⭐ Оплата подтверждена! Премиум-иконка активирована.", a.accountKeyboard(langOf(user)))
+		a.notifyUser(payment.TelegramID, "payment", "⭐ Оплата подтверждена! Премиум-иконка активирована.", a.accountKeyboard(langOf(user), a.isAdmin(payment.TelegramID)))
+		a.auditEvent("⭐", "Премиум активирован", "Пользователь: <code>"+strconv.FormatInt(payment.TelegramID, 10)+"</code>", "Провайдер: <code>"+esc(payment.Provider)+"</code>", "Сумма: <b>"+strconv.Itoa(payment.Amount)+" "+esc(payment.Currency)+"</b>")
 	case "storage":
 		gb := a.storagePackGB()
 		if len(parts) >= 3 {
@@ -279,7 +280,8 @@ func (a *App) fulfillPayment(transactionID string) error {
 			}
 		}
 		_ = a.db.SetQuota(payment.TelegramID, newQuota)
-		_, _ = a.tg.SendMessage(payment.TelegramID, "✅ Оплата подтверждена. Добавлено место: <b>"+strconv.Itoa(gb)+" GB</b>.", a.accountKeyboard(langOf(user)))
+		a.notifyUser(payment.TelegramID, "payment", "✅ Оплата подтверждена. Добавлено место: <b>"+strconv.Itoa(gb)+" GB</b>.", a.accountKeyboard(langOf(user), a.isAdmin(payment.TelegramID)))
+		a.auditEvent("💾", "Куплено место", "Пользователь: <code>"+strconv.FormatInt(payment.TelegramID, 10)+"</code>", "Объем: <b>"+strconv.Itoa(gb)+" GB</b>", "Сумма: <b>"+strconv.Itoa(payment.Amount)+" "+esc(payment.Currency)+"</b>")
 	}
 	_ = a.db.UpdatePaymentStatus(transactionID, "FULFILLED")
 	return nil

@@ -4,17 +4,56 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 )
 
 func (a *App) accountHome(cb *CallbackQuery) {
+	if cb.Message == nil {
+		return
+	}
 	user, err := a.db.GetUser(cb.From.ID)
 	if err != nil || user == nil || user.Status != "approved" || user.IsDisabled == 1 {
 		a.tg.AnswerCallback(cb.ID, "Доступ не активен", true)
 		return
 	}
-	a.edit(cb, a.accountText(user), a.accountKeyboard(langOf(user)))
+	a.present(cb, cb.Message.Chat.ID, "account_home", a.accountText(user), a.accountKeyboard(langOf(user), a.isAdmin(user.TelegramID)))
+}
+
+func (a *App) accountNotifications(cb *CallbackQuery) {
+	if cb.Message == nil {
+		return
+	}
+	user, err := a.db.GetUser(cb.From.ID)
+	if err != nil || user == nil || user.Status != "approved" || user.IsDisabled == 1 {
+		a.tg.AnswerCallback(cb.ID, "Доступ не активен", true)
+		return
+	}
+	prefs, _ := a.db.NotificationPrefs(user.TelegramID)
+	a.present(cb, cb.Message.Chat.ID, "notifications", a.content.Message("notifications", nil), notificationsKeyboard(prefs))
+}
+
+func (a *App) toggleNotification(cb *CallbackQuery) {
+	if cb.Message == nil {
+		return
+	}
+	kind := strings.TrimPrefix(cb.Data, "account:notify:")
+	meta, ok := notificationKind(kind)
+	if !ok {
+		a.tg.AnswerCallback(cb.ID, "Неизвестная настройка", true)
+		return
+	}
+	enabled := a.db.NotificationEnabled(cb.From.ID, kind)
+	if err := a.db.SetNotification(cb.From.ID, kind, !enabled); err != nil {
+		a.tg.AnswerCallback(cb.ID, "Не удалось сохранить", true)
+		return
+	}
+	prefs, _ := a.db.NotificationPrefs(cb.From.ID)
+	if err := a.tg.EditMessageReplyMarkup(cb.Message.Chat.ID, cb.Message.MessageID, notificationsKeyboard(prefs)); err != nil {
+		log.Printf("notification toggle redraw failed: %v", err)
+	}
+	a.tg.AnswerCallback(cb.ID, meta.Title+": "+mapBool(!enabled, "включены", "выключены"), false)
 }
 
 func (a *App) accountSupport(cb *CallbackQuery) {
@@ -40,8 +79,9 @@ func (a *App) accountSupport(cb *CallbackQuery) {
 	}
 	_ = a.sendEventSticker(cb.Message.Chat.ID, "support")
 	contacts := strings.Join(lines[2:], "\n")
-	if a.content.Photo("support") != "" {
+	if a.menuPhotoID("support") != "" {
 		_, _ = a.sendContent(cb.Message.Chat.ID, "support", map[string]string{"support_contacts": contacts}, accountBackKeyboard())
+		a.deletePrev(cb, cb.Message.Chat.ID)
 		return
 	}
 	a.edit(cb, a.content.Message("support", map[string]string{"support_contacts": contacts}), accountBackKeyboard())
@@ -54,9 +94,10 @@ func (a *App) accountDonate(cb *CallbackQuery) {
 	}
 	_ = a.sendEventSticker(cb.Message.Chat.ID, "donate")
 	text := a.content.Message("donate", nil) + "\n\n" + a.content.Message("premium_info", nil)
-	if a.content.Photo("donate") != "" {
+	if a.menuPhotoID("donate") != "" {
 		_, _ = a.sendContent(cb.Message.Chat.ID, "donate", nil, donateKeyboard(a.cfg))
 		_, _ = a.tg.SendMessage(cb.Message.Chat.ID, a.content.Message("premium_info", nil), nil)
+		a.deletePrev(cb, cb.Message.Chat.ID)
 		return
 	}
 	a.edit(cb, text, donateKeyboard(a.cfg))
@@ -168,6 +209,7 @@ func (a *App) plategaCreate(cb *CallbackQuery) {
 		status = "PENDING"
 	}
 	_ = a.db.CreatePayment(transactionID, cb.From.ID, "platega", amount, "RUB", status, &paymentURL, &payload)
+	a.auditEvent("💳", "Платеж создан", "Провайдер: <b>Platega</b>", "Пользователь: <code>"+strconv.FormatInt(cb.From.ID, 10)+"</code>", fmt.Sprintf("Сумма: <b>%d RUB</b>", amount), "ID: <code>"+esc(transactionID)+"</code>")
 	a.edit(
 		cb,
 		fmt.Sprintf("💳 <b>Platega</b>\n\nПлатеж создан. После оплаты нажмите «Проверить оплату».\nID: <code>%s</code>\nСумма: <b>%d RUB</b>", esc(transactionID), amount),
@@ -206,6 +248,7 @@ func (a *App) storageBuyCallback(cb *CallbackQuery) {
 		status = "PENDING"
 	}
 	_ = a.db.CreatePayment(transactionID, cb.From.ID, provider, price, "RUB", status, &paymentURL, &payload)
+	a.auditEvent("💾", "Платеж создан: покупка места", "Провайдер: <code>"+esc(provider)+"</code>", "Пользователь: <code>"+strconv.FormatInt(cb.From.ID, 10)+"</code>", fmt.Sprintf("Пакет: <b>%d GB</b> за <b>%d RUB</b>", gb, price), "ID: <code>"+esc(transactionID)+"</code>")
 	a.edit(cb, fmt.Sprintf("💾 <b>Покупка места</b>\n\nПакет: <b>%d GB</b>\nСумма: <b>%d RUB</b>\nID: <code>%s</code>", gb, price, esc(transactionID)), paymentLinkKeyboard(paymentURL, transactionID, "account:buy_storage"))
 }
 
@@ -233,6 +276,7 @@ func (a *App) externalDonateCreate(cb *CallbackQuery, provider string) {
 		status = "PENDING"
 	}
 	_ = a.db.CreatePayment(transactionID, cb.From.ID, provider, amount, "RUB", status, &paymentURL, &payload)
+	a.auditEvent("💳", "Платеж создан: донат", "Провайдер: <code>"+esc(provider)+"</code>", "Пользователь: <code>"+strconv.FormatInt(cb.From.ID, 10)+"</code>", fmt.Sprintf("Сумма: <b>%d RUB</b>", amount), "ID: <code>"+esc(transactionID)+"</code>")
 	a.edit(cb, fmt.Sprintf("💳 <b>%s</b>\n\nПлатеж создан.\nID: <code>%s</code>\nСумма: <b>%d RUB</b>", esc(provider), esc(transactionID), amount), paymentLinkKeyboard(paymentURL, transactionID, "donate:"+provider))
 }
 
@@ -352,7 +396,7 @@ func (a *App) setLanguage(cb *CallbackQuery) {
 	_ = a.db.SetLanguage(cb.From.ID, lang)
 	user, _ := a.db.GetUser(cb.From.ID)
 	if user != nil {
-		a.edit(cb, a.accountText(user), a.accountKeyboard(lang))
+		a.edit(cb, a.accountText(user), a.accountKeyboard(lang, a.isAdmin(cb.From.ID)))
 	}
 }
 
@@ -375,7 +419,7 @@ func (a *App) applyUserPassword(msg *Message) {
 	_ = a.db.SetNextcloudPassword(user.TelegramID, password)
 	a.states.Clear(msg.From.ID)
 	_ = a.sendEventSticker(msg.Chat.ID, "password")
-	_, _ = a.tg.SendMessage(msg.Chat.ID, a.content.Message("password_changed", map[string]string{"login": esc(*user.NCUserID), "password": esc(password)}), a.accountKeyboard(langOf(user)))
+	_, _ = a.tg.SendMessage(msg.Chat.ID, a.content.Message("password_changed", map[string]string{"login": esc(*user.NCUserID), "password": esc(password)}), a.accountKeyboard(langOf(user), a.isAdmin(user.TelegramID)))
 }
 
 func (a *App) handleSuccessfulPayment(msg *Message) {
@@ -386,5 +430,6 @@ func (a *App) handleSuccessfulPayment(msg *Message) {
 	until := time.Now().UTC().Add(time.Duration(a.cfg.PremiumDays) * 24 * time.Hour).Format(time.RFC3339)
 	_ = a.db.SetSupporter(msg.From.ID, true, &until)
 	_ = a.db.CreatePayment(msg.SuccessfulPayment.TelegramPaymentChargeID, msg.From.ID, "telegram_stars", msg.SuccessfulPayment.TotalAmount, "XTR", "CONFIRMED", nil, &payload)
-	_, _ = a.tg.SendMessage(msg.Chat.ID, "⭐ Спасибо за поддержку! Премиум-иконка активирована.", a.accountKeyboard("ru"))
+	_, _ = a.tg.SendMessage(msg.Chat.ID, "⭐ Спасибо за поддержку! Премиум-иконка активирована.", a.accountKeyboard("ru", a.isAdmin(msg.From.ID)))
+	a.auditEvent("⭐", "Оплата Telegram Stars", "Пользователь: <code>"+strconv.FormatInt(msg.From.ID, 10)+"</code>", fmt.Sprintf("Сумма: <b>%d ⭐</b>", msg.SuccessfulPayment.TotalAmount))
 }

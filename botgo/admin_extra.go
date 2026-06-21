@@ -302,19 +302,20 @@ func (a *App) applyPromoMessage(msg *Message) {
 	oldQuota := user.QuotaGB
 	promo, err := a.db.ApplyPromo(msg.Text, user)
 	if err != nil {
-		_, _ = a.tg.SendMessage(msg.Chat.ID, "🎟 Не удалось применить промокод: <code>"+esc(err.Error())+"</code>", a.accountKeyboard(langOf(user)))
+		_, _ = a.tg.SendMessage(msg.Chat.ID, "🎟 Не удалось применить промокод: <code>"+esc(err.Error())+"</code>", a.accountKeyboard(langOf(user), a.isAdmin(user.TelegramID)))
 		return
 	}
 	if promo.QuotaGB > 0 && user.NCUserID != nil {
 		if err := a.nc.SetQuota(*user.NCUserID, oldQuota+promo.QuotaGB); err != nil {
-			_, _ = a.tg.SendMessage(msg.Chat.ID, "⚠️ Промокод записан в базу, но квота облака не обновилась: <code>"+esc(err.Error())+"</code>", a.accountKeyboard(langOf(user)))
+			_, _ = a.tg.SendMessage(msg.Chat.ID, "⚠️ Промокод записан в базу, но квота облака не обновилась: <code>"+esc(err.Error())+"</code>", a.accountKeyboard(langOf(user), a.isAdmin(user.TelegramID)))
 			return
 		}
 		a.quota.Delete(*user.NCUserID)
 	}
 	updated, _ := a.db.GetUser(msg.From.ID)
 	text := fmt.Sprintf("🎟 <b>Промокод применен</b>\n\nДобавлено места: <b>%d GB</b>\nПремиум: <b>%d дней</b>", promo.QuotaGB, promo.PremiumDays)
-	_, _ = a.tg.SendMessage(msg.Chat.ID, text, a.accountKeyboard(langOf(updated)))
+	_, _ = a.tg.SendMessage(msg.Chat.ID, text, a.accountKeyboard(langOf(updated), a.isAdmin(msg.From.ID)))
+	a.auditEvent("🎟", "Промокод применен", "Пользователь: "+displayName(updated), "Код: <code>"+esc(strings.ToUpper(strings.TrimSpace(msg.Text)))+"</code>", fmt.Sprintf("Место: <b>%d GB</b>, премиум: <b>%d дн.</b>", promo.QuotaGB, promo.PremiumDays))
 }
 
 func (a *App) createPromoMessage(msg *Message) {

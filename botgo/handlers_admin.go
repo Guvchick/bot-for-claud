@@ -9,16 +9,15 @@ import (
 	"time"
 )
 
+// start is the single entry point for everyone. Admin status is detected purely by
+// Telegram ID and only adds an extra "panel" button to the otherwise identical menu.
 func (a *App) start(msg *Message) {
-	if a.isAdmin(msg.From.ID) {
-		_, _ = a.tg.SendMessage(msg.Chat.ID, a.adminSummary(), adminKeyboard())
-		return
-	}
 	user, err := a.db.UpsertRequest(msg.From.ID, ptrOrNil(msg.From.Username), ptrOrNil(msg.From.FirstName), ptrOrNil(msg.From.LastName))
 	if err != nil {
 		_, _ = a.tg.SendMessage(msg.Chat.ID, "⚠️ Ошибка базы: <code>"+esc(err.Error())+"</code>", nil)
 		return
 	}
+	freshAccess := user.Status != "approved"
 	if user.Status == "approved" {
 		needsProvision := user.NCUserID == nil || user.NCPassword == nil
 		if user.NCUserID != nil {
@@ -29,7 +28,7 @@ func (a *App) start(msg *Message) {
 		}
 		if !needsProvision {
 			_ = a.sendEventSticker(msg.Chat.ID, "welcome")
-			_, _ = a.tg.SendMessage(msg.Chat.ID, a.accountText(user), a.accountKeyboard(langOf(user)))
+			a.present(nil, msg.Chat.ID, "account_home", a.accountText(user), a.accountKeyboard(langOf(user), a.isAdmin(user.TelegramID)))
 			return
 		}
 	}
@@ -42,6 +41,13 @@ func (a *App) start(msg *Message) {
 	}
 	a.sendAccessOpened(msg.Chat.ID, approved, ncUserID, password, quota)
 	log.Printf("user auto approved: telegram_id=%d nc_user_id=%s", msg.From.ID, ncUserID)
+	if freshAccess {
+		a.auditEvent("🔓", "Авторизация: новый доступ",
+			"Пользователь: "+displayName(approved),
+			"Telegram ID: <code>"+strconv.FormatInt(msg.From.ID, 10)+"</code>",
+			"Cloud ID: <code>"+esc(ncUserID)+"</code>",
+			fmt.Sprintf("Квота: <b>%d GB</b>", quota))
+	}
 }
 
 func (a *App) handleCallback(cb *CallbackQuery) {
@@ -66,7 +72,7 @@ func (a *App) handleCallback(cb *CallbackQuery) {
 	}
 	switch {
 	case data == "admin":
-		a.edit(cb, a.adminSummary(), adminKeyboard())
+		a.present(cb, cb.Message.Chat.ID, "admin", a.adminSummary(), adminKeyboard())
 	case data == "stats":
 		a.edit(cb, a.statsText(), statsKeyboard())
 	case data == "stats:storage":
@@ -159,17 +165,27 @@ func (a *App) handleCallback(cb *CallbackQuery) {
 	case data == "account:buy_storage":
 		a.accountBuyStorage(cb)
 	case data == "account:promo":
+		if !a.cfg.EnablePromoBlock {
+			a.tg.AnswerCallback(cb.ID, "Промокоды отключены", true)
+			return
+		}
 		a.states.Set(cb.From.ID, State{Kind: StatePromoApply})
 		a.edit(cb, "🎟 <b>Промокод</b>\n\nОтправьте промокод следующим сообщением.", promoApplyKeyboard())
+	case data == "account:notifications":
+		a.accountNotifications(cb)
+	case strings.HasPrefix(data, "account:notify:"):
+		a.toggleNotification(cb)
+		return
 	case data == "account:info":
 		_ = a.sendEventSticker(cb.Message.Chat.ID, "info")
-		if a.content.Photo("info") != "" {
+		if a.menuPhotoID("info") != "" {
 			_, _ = a.sendContent(cb.Message.Chat.ID, "info", nil, accountBackKeyboard())
+			a.deletePrev(cb, cb.Message.Chat.ID)
 			break
 		}
 		a.edit(cb, a.content.Message("info", nil), accountBackKeyboard())
 	case data == "account:language":
-		a.edit(cb, "<b>🌐 Выберите язык</b>", languageKeyboard())
+		a.present(cb, cb.Message.Chat.ID, "language", "<b>🌐 Выберите язык</b>", languageKeyboard())
 	case data == "account:change_password":
 		a.states.Set(cb.From.ID, State{Kind: StateChangePassword})
 		_, _ = a.tg.SendMessage(cb.Message.Chat.ID, "🔐 Отправьте новый пароль для облака.\n\nМинимум 8 символов. После смены бот обновит сохраненный пароль для загрузок.", accountBackKeyboard())
@@ -634,7 +650,7 @@ func (a *App) sendAccessOpened(chatID int64, user *User, ncUserID, password stri
 			"password": esc(password),
 			"quota_gb": strconv.Itoa(quota),
 		},
-		a.accountKeyboard(langOf(user)),
+		a.accountKeyboard(langOf(user), a.isAdmin(user.TelegramID)),
 	)
 }
 
@@ -654,6 +670,11 @@ func (a *App) approveUser(cb *CallbackQuery) {
 	a.sendAccessOpened(id, approved, ncUserID, password, quota)
 	a.edit(cb, fmt.Sprintf("✅ Доступ выдан пользователю <code>%d</code>: %d GB.", id, quota), adminKeyboard())
 	log.Printf("user approved: telegram_id=%d nc_user_id=%s", id, ncUserID)
+	a.auditEvent("✅", "Авторизация: доступ одобрен",
+		"Пользователь: "+displayName(approved),
+		"Telegram ID: <code>"+strconv.FormatInt(id, 10)+"</code>",
+		"Одобрил администратор: <code>"+strconv.FormatInt(cb.From.ID, 10)+"</code>",
+		fmt.Sprintf("Квота: <b>%d GB</b>", quota))
 }
 
 func (a *App) rejectUser(cb *CallbackQuery) {
@@ -663,6 +684,9 @@ func (a *App) rejectUser(cb *CallbackQuery) {
 	_, _ = a.sendContent(id, "rejected", nil, nil)
 	a.edit(cb, fmt.Sprintf("❌ Заявка пользователя <code>%d</code> отклонена.", id), adminKeyboard())
 	log.Printf("user rejected: telegram_id=%d user=%v", id, user != nil)
+	a.auditEvent("🚫", "Авторизация: доступ отклонен",
+		"Telegram ID: <code>"+strconv.FormatInt(id, 10)+"</code>",
+		"Отклонил администратор: <code>"+strconv.FormatInt(cb.From.ID, 10)+"</code>")
 }
 
 func (a *App) quotaAdd(cb *CallbackQuery) {
@@ -708,7 +732,7 @@ func (a *App) resetPassword(cb *CallbackQuery) {
 		return
 	}
 	_ = a.db.SetNextcloudPassword(id, password)
-	_, _ = a.tg.SendMessage(id, "🔐 Администратор сбросил пароль для вашего облака.\n\nЛогин: <code>"+esc(*user.NCUserID)+"</code>\nНовый пароль: <code>"+esc(password)+"</code>", a.accountKeyboard(langOf(user)))
+	a.notifyUser(id, "account", "🔐 Администратор сбросил пароль для вашего облака.\n\nЛогин: <code>"+esc(*user.NCUserID)+"</code>\nНовый пароль: <code>"+esc(password)+"</code>", a.accountKeyboard(langOf(user), a.isAdmin(id)))
 	_, _ = a.tg.SendMessage(cb.Message.Chat.ID, fmt.Sprintf("🔐 Пароль пользователя <code>%d</code> сброшен.", id), adminKeyboard())
 }
 

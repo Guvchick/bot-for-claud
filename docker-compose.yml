@@ -69,6 +69,7 @@ services:
       - ./backups:/app/backups
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./banners:/app/banners
       - telegram_bot_api_data:/telegram-bot-api-data
     ports:
       - "${WEBHOOK_PORT:-8088}:8088"

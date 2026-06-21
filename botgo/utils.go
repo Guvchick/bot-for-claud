@@ -228,3 +228,18 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// largestPhotoID returns the file_id of the highest-resolution size in a photo
+// message, which is the one worth caching and reusing.
+func largestPhotoID(msg *Message) string {
+	if msg == nil || len(msg.Photo) == 0 {
+		return ""
+	}
+	best := msg.Photo[0]
+	for _, photo := range msg.Photo {
+		if photo.FileSize > best.FileSize || photo.Width*photo.Height > best.Width*best.Height {
+			best = photo
+		}
+	}
+	return best.FileID
+}

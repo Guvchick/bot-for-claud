@@ -81,20 +81,53 @@ func loadConfig() Config {
 		TelegramBotPathPrefix:        strings.TrimRight(env("TELEGRAM_BOT_PATH_PREFIX", ""), "/"),
 		ContentStoreFile:             env("CONTENT_STORE_FILE", "data/content.json"),
 		LogLevel:                     strings.ToLower(env("LOG_LEVEL", "info")),
-		NotifyAdminsOnStart:         envBool("NOTIFY_ADMINS_ON_START", true),
-		NotifyAdminsOnCrash:         envBool("NOTIFY_ADMINS_ON_CRASH", true),
+		NotifyAdminsOnStart:          envBool("NOTIFY_ADMINS_ON_START", true),
+		NotifyAdminsOnCrash:          envBool("NOTIFY_ADMINS_ON_CRASH", true),
+		LogGroupID:                   envInt64("LOG_GROUP_ID", 0),
+		LogGroupForwardErrors:        envBool("LOG_GROUP_FORWARD_ERRORS", true),
+		EnablePromoBlock:             envBool("ENABLE_PROMO_BLOCK", true),
+		BannerDir:                    strings.TrimRight(env("BANNER_DIR", "banners"), "/"),
+		BannerCacheFile:              env("BANNER_CACHE_FILE", "data/banners.json"),
+		BannerFiles:                  loadBannerFiles(),
+		UploadChunkSizeMB:            envInt("UPLOAD_CHUNK_SIZE_MB", 96),
+		UploadTimeoutMinutes:         envInt("UPLOAD_TIMEOUT_MINUTES", 180),
 	}
 }
 
-func configureLogging(cfg Config) {
+// bannerEnvKeys maps a menu key to the environment variable that overrides its banner image.
+var bannerEnvKeys = map[string]string{
+	"menu":          "BANNER_MENU",
+	"approved":      "BANNER_APPROVED",
+	"support":       "BANNER_SUPPORT",
+	"donate":        "BANNER_DONATE",
+	"info":          "BANNER_INFO",
+	"notifications": "BANNER_NOTIFICATIONS",
+	"admin":         "BANNER_ADMIN",
+	"language":      "BANNER_LANGUAGE",
+}
+
+// loadBannerFiles reads the per-menu banner filenames from the environment.
+// Each value is a filename relative to BANNER_DIR (or an absolute path).
+func loadBannerFiles() map[string]string {
+	files := map[string]string{}
+	for key, envKey := range bannerEnvKeys {
+		if value := strings.TrimSpace(os.Getenv(envKey)); value != "" {
+			files[key] = value
+		}
+	}
+	return files
+}
+
+func configureLogging(cfg Config) *PrettyLogWriter {
 	_ = os.MkdirAll(cfg.LogDir, 0o755)
 	log.SetFlags(0)
-	file, err := os.OpenFile(logFilePath(cfg.LogDir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err == nil {
-		log.SetOutput(NewPrettyLogWriter(io.MultiWriter(os.Stdout, file), cfg.LogLevel))
-		return
+	var fileWriter io.Writer
+	if file, err := os.OpenFile(logFilePath(cfg.LogDir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+		fileWriter = file
 	}
-	log.SetOutput(NewPrettyLogWriter(os.Stdout, cfg.LogLevel))
+	writer := NewPrettyLogWriter(os.Stdout, fileWriter, cfg.LogLevel, colorEnabled())
+	log.SetOutput(writer)
+	return writer
 }
 
 func loadDotEnv(path string) {
@@ -134,6 +167,14 @@ func env(name, fallback string) string {
 func envInt(name string, fallback int) int {
 	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name)))
 	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func envInt64(name string, fallback int64) int64 {
+	value, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(name)), 10, 64)
+	if err != nil {
 		return fallback
 	}
 	return value

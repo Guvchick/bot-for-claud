@@ -22,7 +22,12 @@ func (a *App) broadcastText(chatID int64, text string) {
 	}
 	sent := 0
 	failed := 0
+	skipped := 0
 	for _, id := range ids {
+		if !a.db.NotificationEnabled(id, "broadcast") {
+			skipped++
+			continue
+		}
 		if _, err := a.tg.SendMessage(id, text, nil); err != nil {
 			failed++
 			log.Printf("broadcast failed: telegram_id=%d err=%v", id, err)
@@ -31,7 +36,7 @@ func (a *App) broadcastText(chatID int64, text string) {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	_, _ = a.tg.SendMessage(chatID, fmt.Sprintf("📣 Рассылка завершена.\n\nОтправлено: <b>%d</b>\nОшибок: <b>%d</b>", sent, failed), adminKeyboard())
+	_, _ = a.tg.SendMessage(chatID, fmt.Sprintf("📣 Рассылка завершена.\n\nОтправлено: <b>%d</b>\nОтключили уведомления: <b>%d</b>\nОшибок: <b>%d</b>", sent, skipped, failed), adminKeyboard())
 }
 
 func (a *App) broadcastMessage(msg *Message) {
@@ -42,7 +47,12 @@ func (a *App) broadcastMessage(msg *Message) {
 	}
 	sent := 0
 	failed := 0
+	skipped := 0
 	for _, id := range ids {
+		if !a.db.NotificationEnabled(id, "broadcast") {
+			skipped++
+			continue
+		}
 		if err := a.tg.CopyMessage(id, msg.Chat.ID, msg.MessageID); err != nil {
 			failed++
 			log.Printf("broadcast copy failed: telegram_id=%d err=%v", id, err)
@@ -51,7 +61,7 @@ func (a *App) broadcastMessage(msg *Message) {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	_, _ = a.tg.SendMessage(msg.Chat.ID, fmt.Sprintf("📣 Рассылка завершена.\n\nОтправлено: <b>%d</b>\nОшибок: <b>%d</b>", sent, failed), adminKeyboard())
+	_, _ = a.tg.SendMessage(msg.Chat.ID, fmt.Sprintf("📣 Рассылка завершена.\n\nОтправлено: <b>%d</b>\nОтключили уведомления: <b>%d</b>\nОшибок: <b>%d</b>", sent, skipped, failed), adminKeyboard())
 }
 
 func (a *App) backupCallback(cb *CallbackQuery) {

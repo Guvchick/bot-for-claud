@@ -12,13 +12,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Nextcloud struct {
-	baseURL  string
-	username string
-	password string
-	client   *http.Client
+	baseURL      string
+	username     string
+	password     string
+	client       *http.Client
+	uploadClient *http.Client
+	chunkSize    int64
 }
 
 type Platega struct {
@@ -290,22 +293,139 @@ func (nc *Nextcloud) GetQuota(userID, password string) (int64, int64, error) {
 	return used, available, nil
 }
 
+// UploadFile stores a local file in the user's Nextcloud root. Files larger than
+// the configured chunk size go through the WebDAV chunked-upload (v2) flow so that
+// uploads above ~1GB succeed without a single oversized PUT or request timeout.
 func (nc *Nextcloud) UploadFile(userID, password, filename, localPath string) (string, error) {
-	file, err := os.Open(localPath)
+	info, err := os.Stat(localPath)
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
 	remotePath := cleanFilename(filename)
-	status, raw, err := nc.dav(http.MethodPut, userID, password, remotePath, file, nil)
-	if err != nil {
-		return "", err
-	}
-	if status != 200 && status != 201 && status != 204 {
-		if status == 403 {
-			return "", fmt.Errorf("Nextcloud WebDAV upload HTTP 403: облако запретило создание файла. Проверьте квоту, доступ пользователя и правила File Access Control. Ответ: %s", string(raw[:min(len(raw), 300)]))
+	if nc.chunkSize > 0 && info.Size() > nc.chunkSize {
+		if err := nc.uploadChunked(userID, password, remotePath, localPath, info.Size()); err != nil {
+			return "", err
 		}
-		return "", fmt.Errorf("Nextcloud WebDAV upload HTTP %d: %s", status, string(raw[:min(len(raw), 300)]))
+		return remotePath, nil
+	}
+	if err := nc.uploadSingle(userID, password, remotePath, localPath); err != nil {
+		return "", err
 	}
 	return remotePath, nil
+}
+
+func (nc *Nextcloud) uploadDo(method, endpoint, userID, password string, body io.Reader, contentLength int64, headers map[string]string) (int, []byte, error) {
+	req, err := http.NewRequest(method, endpoint, body)
+	if err != nil {
+		return 0, nil, err
+	}
+	if contentLength >= 0 {
+		req.ContentLength = contentLength
+	}
+	req.SetBasicAuth(userID, password)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	client := nc.uploadClient
+	if client == nil {
+		client = nc.client
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	return resp.StatusCode, raw, nil
+}
+
+func (nc *Nextcloud) filesURL(userID, remotePath string) string {
+	parts := []string{}
+	for _, part := range strings.Split(strings.Trim(remotePath, "/"), "/") {
+		if part != "" {
+			parts = append(parts, url.PathEscape(part))
+		}
+	}
+	endpoint := nc.baseURL + "/remote.php/dav/files/" + url.PathEscape(userID) + "/"
+	if len(parts) > 0 {
+		endpoint += strings.Join(parts, "/")
+	}
+	return endpoint
+}
+
+func (nc *Nextcloud) uploadSingle(userID, password, remotePath, localPath string) error {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	status, raw, err := nc.uploadDo(http.MethodPut, nc.filesURL(userID, remotePath), userID, password, file, info.Size(), nil)
+	if err != nil {
+		return err
+	}
+	return nc.checkUploadStatus(status, raw)
+}
+
+func (nc *Nextcloud) uploadChunked(userID, password, remotePath, localPath string, total int64) error {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	uploadID := "tgbot-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	base := nc.baseURL + "/remote.php/dav/uploads/" + url.PathEscape(userID) + "/" + uploadID
+	dest := nc.filesURL(userID, remotePath)
+	totalHeader := strconv.FormatInt(total, 10)
+
+	status, raw, err := nc.uploadDo("MKCOL", base, userID, password, nil, 0, map[string]string{"OC-Total-Length": totalHeader})
+	if err != nil {
+		return err
+	}
+	if status != 201 && status != 200 && status != 405 {
+		return fmt.Errorf("Nextcloud chunk init HTTP %d: %s", status, string(raw[:min(len(raw), 300)]))
+	}
+
+	var offset int64
+	for offset < total {
+		size := nc.chunkSize
+		if remaining := total - offset; remaining < size {
+			size = remaining
+		}
+		// Nextcloud assembles chunks in the lexical order of their names; a zero-padded
+		// byte offset keeps them ordered and unique.
+		chunkURL := base + "/" + fmt.Sprintf("%015d", offset)
+		section := io.NewSectionReader(file, offset, size)
+		status, raw, err := nc.uploadDo(http.MethodPut, chunkURL, userID, password, section, size, map[string]string{"OC-Total-Length": totalHeader})
+		if err != nil {
+			return err
+		}
+		if status != 200 && status != 201 && status != 204 {
+			return fmt.Errorf("Nextcloud chunk PUT HTTP %d at offset %d: %s", status, offset, string(raw[:min(len(raw), 300)]))
+		}
+		offset += size
+	}
+
+	moveHeaders := map[string]string{"Destination": dest, "OC-Total-Length": totalHeader, "Overwrite": "T"}
+	status, raw, err = nc.uploadDo("MOVE", base+"/.file", userID, password, nil, 0, moveHeaders)
+	if err != nil {
+		return err
+	}
+	if status != 201 && status != 204 && status != 200 {
+		return fmt.Errorf("Nextcloud chunk assemble HTTP %d: %s", status, string(raw[:min(len(raw), 300)]))
+	}
+	return nil
+}
+
+func (nc *Nextcloud) checkUploadStatus(status int, raw []byte) error {
+	if status == 200 || status == 201 || status == 204 {
+		return nil
+	}
+	if status == 403 {
+		return fmt.Errorf("Nextcloud WebDAV upload HTTP 403: облако запретило создание файла. Проверьте квоту, доступ пользователя и правила File Access Control. Ответ: %s", string(raw[:min(len(raw), 300)]))
+	}
+	return fmt.Errorf("Nextcloud WebDAV upload HTTP %d: %s", status, string(raw[:min(len(raw), 300)]))
 }

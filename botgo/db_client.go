@@ -225,6 +225,48 @@ func (db *DB) ListSettings(prefix string) (map[string]string, error) {
 	return settings, err
 }
 
+// NotificationPrefs returns the stored on/off overrides for a user keyed by kind.
+// Missing kinds fall back to their default in notificationKinds.
+func (db *DB) NotificationPrefs(id int64) (map[string]bool, error) {
+	rows, err := db.db.QueryContext(context.Background(), pg("SELECT kind, enabled FROM user_notifications WHERE telegram_id = ?"), id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	prefs := map[string]bool{}
+	for rows.Next() {
+		var kind string
+		var enabled int
+		if err := rows.Scan(&kind, &enabled); err != nil {
+			return nil, err
+		}
+		prefs[kind] = enabled == 1
+	}
+	return prefs, rows.Err()
+}
+
+// NotificationEnabled reports whether a user wants notifications of a given kind.
+// On any error it fails open (returns the kind's default) so transient DB issues
+// never silently swallow important messages.
+func (db *DB) NotificationEnabled(id int64, kind string) bool {
+	def := true
+	if k, ok := notificationKind(kind); ok {
+		def = k.Default
+	}
+	row := db.db.QueryRowContext(context.Background(), pg("SELECT enabled FROM user_notifications WHERE telegram_id = ? AND kind = ?"), id, kind)
+	var enabled int
+	if err := row.Scan(&enabled); err != nil {
+		return def
+	}
+	return enabled == 1
+}
+
+func (db *DB) SetNotification(id int64, kind string, enabled bool) error {
+	return db.exec(context.Background(), `INSERT INTO user_notifications (telegram_id, kind, enabled, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(telegram_id, kind) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+		id, kind, boolToInt(enabled), now())
+}
+
 func (db *DB) CreatePayment(transactionID string, telegramID int64, provider string, amount int, currency, status string, paymentURL *string, payload *string) error {
 	return db.createPayment(context.Background(), transactionID, telegramID, provider, amount, currency, status, paymentURL, payload)
 }
@@ -288,6 +330,13 @@ func (db *DB) initSchema(ctx context.Context) error {
 			telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
 			used_at TEXT NOT NULL,
 			PRIMARY KEY (code, telegram_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_notifications (
+			telegram_id BIGINT NOT NULL,
+			kind TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (telegram_id, kind)
 		)`,
 		`CREATE INDEX IF NOT EXISTS users_status_created_idx ON users (status, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS users_username_idx ON users (lower(username))`,

@@ -17,6 +17,63 @@ func (a *App) notifyAdmins(text string) {
 	}
 }
 
+// notifyGroup sends a message to the configured log group. It is best-effort and
+// intentionally silent on failure: logging here would feed the log-forwarder and
+// create a notification loop.
+func (a *App) notifyGroup(text string) {
+	if a.cfg.LogGroupID == 0 {
+		return
+	}
+	_, _ = a.tg.SendMessage(a.cfg.LogGroupID, text, nil)
+}
+
+// auditEvent records a structured event: it is logged at EVENT level (kept out of
+// the debug stream) and mirrored to the log group as a clean, formatted message.
+func (a *App) auditEvent(emoji, title string, lines ...string) {
+	log.Printf("event: %s", title)
+	if a.cfg.LogGroupID == 0 {
+		return
+	}
+	text := emoji + " <b>" + esc(title) + "</b>"
+	if len(lines) > 0 {
+		text += "\n\n" + strings.Join(lines, "\n")
+	}
+	a.notifyGroup(text)
+}
+
+// notifyUser delivers a push message only if the user has that notification kind
+// enabled. It fails open on DB errors (see DB.NotificationEnabled).
+func (a *App) notifyUser(id int64, kind, text string, markup *InlineKeyboardMarkup) {
+	if !a.db.NotificationEnabled(id, kind) {
+		return
+	}
+	if _, err := a.tg.SendMessage(id, text, markup); err != nil {
+		log.Printf("user notification failed: telegram_id=%d kind=%s err=%v", id, kind, err)
+	}
+}
+
+// setupLogForwarding streams WARN/ERROR log lines to the log group, throttled and
+// non-blocking. The drain goroutine never logs on failure so it cannot feed itself.
+func (a *App) setupLogForwarding() {
+	if a.cfg.LogGroupID == 0 || !a.cfg.LogGroupForwardErrors || a.logWriter == nil {
+		return
+	}
+	a.logForward = make(chan string, 256)
+	a.logWriter.SetForward(func(level int, label, line string) {
+		msg := "🪵 <b>" + esc(label) + "</b>\n<code>" + esc(shortText(line, 1500)) + "</code>"
+		select {
+		case a.logForward <- msg:
+		default:
+		}
+	})
+	go func() {
+		for msg := range a.logForward {
+			_, _ = a.tg.SendMessage(a.cfg.LogGroupID, msg, nil)
+			time.Sleep(1200 * time.Millisecond)
+		}
+	}()
+}
+
 func (a *App) notifyStartup() {
 	if !a.cfg.NotifyAdminsOnStart {
 		return
@@ -37,6 +94,7 @@ func (a *App) notifyStartup() {
 		esc(a.cfg.WebhookListenAddr),
 	)
 	a.notifyAdmins(text)
+	a.notifyGroup(text)
 }
 
 func (a *App) notifyCrash(scope string, recovered any, stack []byte) {
@@ -57,6 +115,7 @@ func (a *App) notifyCrash(scope string, recovered any, stack []byte) {
 		esc(stackText),
 	)
 	a.notifyAdmins(text)
+	a.notifyGroup(text)
 }
 
 func (a *App) safeGo(name string, fn func()) {

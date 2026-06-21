@@ -13,7 +13,8 @@ import (
 func main() {
 	loadDotEnv(".env")
 	cfg := loadConfig()
-	configureLogging(cfg)
+	logWriter := configureLogging(cfg)
+	uploadTimeout := time.Duration(cfg.UploadTimeoutMinutes) * time.Minute
 	redis, err := NewRedisClient(cfg.RedisURL)
 	if err != nil {
 		log.Fatalf("redis config: %v", err)
@@ -33,26 +34,34 @@ func main() {
 			localPathPrefix: cfg.TelegramLocalPathPrefix,
 			botPathPrefix:   cfg.TelegramBotPathPrefix,
 			client:          &http.Client{Timeout: 90 * time.Second},
+			downloadClient:  &http.Client{Timeout: uploadTimeout},
 		},
 		db: db,
 		nc: &Nextcloud{
-			baseURL:  strings.TrimRight(cfg.NextcloudInternalURL, "/"),
-			username: cfg.NextcloudAdminUser,
-			password: cfg.NextcloudAdminPassword,
-			client:   &http.Client{Timeout: 90 * time.Second},
+			baseURL:      strings.TrimRight(cfg.NextcloudInternalURL, "/"),
+			username:     cfg.NextcloudAdminUser,
+			password:     cfg.NextcloudAdminPassword,
+			client:       &http.Client{Timeout: 90 * time.Second},
+			uploadClient: &http.Client{Timeout: uploadTimeout},
+			chunkSize:    int64(cfg.UploadChunkSizeMB) * 1024 * 1024,
 		},
-		states:   NewStateStore(redis),
-		uploads:  NewUploadQueue(),
-		batches:  NewUploadBatchManager(),
-		quota:    NewQuotaCache(time.Duration(cfg.QuotaCacheSeconds) * time.Second),
-		stickers: NewStickerStore(cfg.StickerStoreFile),
-		content:  NewContentStore(cfg.ContentStoreFile),
+		states:    NewStateStore(redis),
+		uploads:   NewUploadQueue(),
+		batches:   NewUploadBatchManager(),
+		quota:     NewQuotaCache(time.Duration(cfg.QuotaCacheSeconds) * time.Second),
+		stickers:  NewStickerStore(cfg.StickerStoreFile),
+		content:   NewContentStore(cfg.ContentStoreFile),
+		banners:   NewBannerStore(cfg),
+		logWriter: logWriter,
 	}
 	if err := app.stickers.Load(); err != nil {
 		log.Printf("sticker store load failed: %v", err)
 	}
 	if err := app.content.Load(); err != nil {
 		log.Printf("content store load failed: %v", err)
+	}
+	if err := app.banners.Load(); err != nil {
+		log.Printf("banner cache load failed: %v", err)
 	}
 	if cfg.PlategaEnabled && cfg.PlategaMerchantID != "" && cfg.PlategaSecret != "" {
 		app.platega = &Platega{
@@ -89,9 +98,11 @@ func main() {
 	if err := app.db.Init(); err != nil {
 		log.Fatalf("init db: %v", err)
 	}
-	log.Printf("bot started | nextcloud_public=%s nextcloud_internal=%s postgres=%s/%s telegram_api=%s telegram_local_mode=%v upload_workers=%d quota_cache_seconds=%d", cfg.NextcloudURL, cfg.NextcloudInternalURL, env("POSTGRES_HOST", "postgres"), env("POSTGRES_DB", "bot"), cfg.TelegramAPIBaseURL, cfg.TelegramLocalMode, cfg.UploadWorkers, cfg.QuotaCacheSeconds)
+	app.setupLogForwarding()
+	app.printStartupBanner()
 	app.logRuntimeHints()
 	app.notifyStartup()
+	app.warmBanners()
 
 	for i := 0; i < cfg.UploadWorkers; i++ {
 		workerID := i + 1
@@ -109,6 +120,37 @@ func main() {
 		}
 	}()
 	app.poll()
+}
+
+// printStartupBanner writes a clean, human-readable summary straight to stdout
+// (bypassing the leveled logger so it stays unprefixed), then logs a one-line
+// machine-readable summary through the logger.
+func (a *App) printStartupBanner() {
+	mode := "public Telegram Bot API"
+	if a.cfg.TelegramLocalMode {
+		mode = "local Bot API (--local)"
+	}
+	group := "—"
+	if a.cfg.LogGroupID != 0 {
+		group = fmt.Sprintf("%d", a.cfg.LogGroupID)
+	}
+	banners := 0
+	if a.banners != nil {
+		banners = len(a.banners.Keys())
+	}
+	fmt.Println()
+	fmt.Println("  ☁️  NextCloud × Telegram Bot  ───────────────────────")
+	fmt.Println("   • Nextcloud : " + a.cfg.NextcloudURL)
+	fmt.Println("   • Telegram  : " + mode)
+	fmt.Printf("   • Workers   : %d\n", a.cfg.UploadWorkers)
+	fmt.Printf("   • Max upload: %d MB (chunk %d MB)\n", a.cfg.TelegramMaxDownloadMB, a.cfg.UploadChunkSizeMB)
+	fmt.Println("   • Log group : " + group)
+	fmt.Printf("   • Banners   : %d configured\n", banners)
+	fmt.Println("   • Webhook   : " + a.cfg.WebhookListenAddr)
+	fmt.Println("  ─────────────────────────────────────────────────────")
+	fmt.Println()
+	log.Printf("bot started: nextcloud=%s telegram_local_mode=%v workers=%d max_upload_mb=%d chunk_mb=%d log_group=%v banners=%d",
+		a.cfg.NextcloudURL, a.cfg.TelegramLocalMode, a.cfg.UploadWorkers, a.cfg.TelegramMaxDownloadMB, a.cfg.UploadChunkSizeMB, a.cfg.LogGroupID != 0, banners)
 }
 
 func (a *App) logRuntimeHints() {
@@ -225,7 +267,7 @@ func (a *App) handleCommand(msg *Message) {
 		a.start(msg)
 	case "admin":
 		if a.isAdmin(msg.From.ID) {
-			_, _ = a.tg.SendMessage(msg.Chat.ID, a.adminSummary(), adminKeyboard())
+			a.present(nil, msg.Chat.ID, "admin", a.adminSummary(), adminKeyboard())
 		}
 	case "health":
 		if a.isAdmin(msg.From.ID) {

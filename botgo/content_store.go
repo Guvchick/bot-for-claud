@@ -40,6 +40,7 @@ var contentMessages = []ContentItem{
 	{Key: "premium_info", Title: "Описание премиума", DefaultText: "<b>⭐ Премиум</b>\n\nПремиум дает приоритет в очереди загрузок, отдельную иконку поддержавшего и скидку на докупку места."},
 	{Key: "info", Title: "Инфо и соглашения", DefaultText: "<b>ℹ️ Информация</b>\n\nПользовательское соглашение, политика хранения файлов и контакты поддержки настраиваются администратором в этой панели."},
 	{Key: "maintenance", Title: "Техработы", DefaultText: "<b>🛠️ Технические работы</b>\n\nСервис временно недоступен. Попробуйте позже."},
+	{Key: "notifications", Title: "Уведомления", DefaultText: "<b>🔔 Уведомления</b>\n\nВыберите, какие уведомления вы хотите получать. Нажмите на пункт, чтобы включить или выключить его."},
 	{Key: "password_changed", Title: "Пароль сменен", DefaultText: "✅ Пароль сменен.\n\nЛогин: <code>{login}</code>\nПароль: <code>{password}</code>"},
 	{Key: "upload_too_large", Title: "Файл больше лимита", DefaultText: "⚠️ Telegram не дает боту скачать этот файл: он больше <b>{limit_mb} MB</b>.\n\nЗагрузите большой файл напрямую через веб-интерфейс облака."},
 }
@@ -53,6 +54,7 @@ var contentButtons = []ContentItem{
 	{Key: "promo_ru", Title: "Кнопка Промокод", DefaultText: "🎟 Промокод"},
 	{Key: "info_ru", Title: "Кнопка Инфо", DefaultText: "ℹ️ Инфо"},
 	{Key: "language_ru", Title: "Кнопка Язык", DefaultText: "🌐 Язык"},
+	{Key: "notifications_ru", Title: "Кнопка Уведомления", DefaultText: "🔔 Уведомления"},
 	{Key: "cloud_en", Title: "Button Open cloud", DefaultText: "☁️ Open cloud"},
 	{Key: "change_password_en", Title: "Button Change password", DefaultText: "🔐 Change password"},
 	{Key: "support_en", Title: "Button Support", DefaultText: "💬 Support"},
@@ -61,6 +63,7 @@ var contentButtons = []ContentItem{
 	{Key: "promo_en", Title: "Button Promo code", DefaultText: "🎟 Promo code"},
 	{Key: "info_en", Title: "Button Info", DefaultText: "ℹ️ Info"},
 	{Key: "language_en", Title: "Button Language", DefaultText: "🌐 Language"},
+	{Key: "notifications_en", Title: "Button Notifications", DefaultText: "🔔 Notifications"},
 }
 
 func NewContentStore(path string) *ContentStore {

@@ -23,6 +23,7 @@ type Telegram struct {
 	localPathPrefix string
 	botPathPrefix   string
 	client          *http.Client
+	downloadClient  *http.Client
 }
 
 type tgResponse struct {
@@ -99,19 +100,19 @@ type CallbackQuery struct {
 }
 
 type PreCheckoutQuery struct {
-	ID              string `json:"id"`
-	From            TGUser `json:"from"`
-	InvoicePayload  string `json:"invoice_payload"`
-	TotalAmount     int    `json:"total_amount"`
-	Currency        string `json:"currency"`
+	ID             string `json:"id"`
+	From           TGUser `json:"from"`
+	InvoicePayload string `json:"invoice_payload"`
+	TotalAmount    int    `json:"total_amount"`
+	Currency       string `json:"currency"`
 }
 
 type SuccessfulPayment struct {
 	Currency                string `json:"currency"`
 	TotalAmount             int    `json:"total_amount"`
 	InvoicePayload          string `json:"invoice_payload"`
-	TelegramPaymentChargeID  string `json:"telegram_payment_charge_id"`
-	ProviderPaymentChargeID  string `json:"provider_payment_charge_id"`
+	TelegramPaymentChargeID string `json:"telegram_payment_charge_id"`
+	ProviderPaymentChargeID string `json:"provider_payment_charge_id"`
 }
 
 type BotFile struct {
@@ -196,6 +197,58 @@ func (tg *Telegram) SendPhoto(chatID int64, photoID, caption string, markup *Inl
 	return &msg, err
 }
 
+// SendPhotoFile uploads a local image file as a photo and returns the resulting
+// message so the caller can capture the Telegram file_id for reuse.
+func (tg *Telegram) SendPhotoFile(chatID int64, path, caption string) (*Message, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("chat_id", strconv.FormatInt(chatID, 10))
+	if caption != "" {
+		_ = writer.WriteField("caption", caption)
+		_ = writer.WriteField("parse_mode", "HTML")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	part, err := writer.CreateFormFile("photo", filepath.Base(path))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return nil, err
+	}
+	_ = writer.Close()
+	req, err := http.NewRequest(http.MethodPost, tg.apiURL+"sendPhoto", &body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := tg.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Telegram sendPhoto failed: %s", tg.cleanError(err))
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	var envelope tgResponse
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, err
+	}
+	if !envelope.OK {
+		return nil, errors.New(tg.cleanText(envelope.Description))
+	}
+	var msg Message
+	if len(envelope.Result) > 0 {
+		_ = json.Unmarshal(envelope.Result, &msg)
+	}
+	return &msg, nil
+}
+
+func (tg *Telegram) DeleteMessage(chatID int64, messageID int) error {
+	return tg.call("deleteMessage", map[string]any{"chat_id": chatID, "message_id": messageID}, nil)
+}
+
 func (tg *Telegram) SendSticker(chatID int64, stickerID string) error {
 	if strings.TrimSpace(stickerID) == "" {
 		return nil
@@ -209,6 +262,20 @@ func (tg *Telegram) EditMessageText(chatID int64, messageID int, text string, ma
 		payload["reply_markup"] = markup
 	}
 	err := tg.call("editMessageText", payload, nil)
+	if err != nil && strings.Contains(err.Error(), "message is not modified") {
+		return nil
+	}
+	return err
+}
+
+// EditMessageReplyMarkup updates only the inline keyboard. Unlike EditMessageText
+// it works on photo/caption messages too, so toggles on bannered menus stay in place.
+func (tg *Telegram) EditMessageReplyMarkup(chatID int64, messageID int, markup *InlineKeyboardMarkup) error {
+	payload := map[string]any{"chat_id": chatID, "message_id": messageID}
+	if markup != nil {
+		payload["reply_markup"] = markup
+	}
+	err := tg.call("editMessageReplyMarkup", payload, nil)
 	if err != nil && strings.Contains(err.Error(), "message is not modified") {
 		return nil
 	}
@@ -261,7 +328,11 @@ func (tg *Telegram) DownloadFile(fileID string) (string, bool, error) {
 		}
 		return path, false, nil
 	}
-	resp, err := tg.client.Get(tg.fileURL + file.FilePath)
+	downloader := tg.downloadClient
+	if downloader == nil {
+		downloader = tg.client
+	}
+	resp, err := downloader.Get(tg.fileURL + file.FilePath)
 	if err != nil {
 		return "", false, fmt.Errorf("Telegram file download failed: %s", tg.cleanError(err))
 	}

@@ -66,24 +66,61 @@ type Config struct {
 	LogLevel                     string
 	NotifyAdminsOnStart          bool
 	NotifyAdminsOnCrash          bool
+	LogGroupID                   int64
+	LogGroupForwardErrors        bool
+	EnablePromoBlock             bool
+	BannerDir                    string
+	BannerCacheFile              string
+	BannerFiles                  map[string]string
+	UploadChunkSizeMB            int
+	UploadTimeoutMinutes         int
 }
 
 type App struct {
-	cfg       Config
-	tg        *Telegram
-	db        *DB
-	nc        *Nextcloud
-	platega   *Platega
-	pally     *Pally
-	cryptoBot *CryptoBotPay
-	heleket   *Heleket
-	states    *StateStore
-	uploads   *UploadQueue
-	batches   *UploadBatchManager
-	quota     *QuotaCache
-	stickers  *StickerStore
-	content   *ContentStore
-	uploadSeq int64
+	cfg        Config
+	tg         *Telegram
+	db         *DB
+	nc         *Nextcloud
+	platega    *Platega
+	pally      *Pally
+	cryptoBot  *CryptoBotPay
+	heleket    *Heleket
+	states     *StateStore
+	uploads    *UploadQueue
+	batches    *UploadBatchManager
+	quota      *QuotaCache
+	stickers   *StickerStore
+	content    *ContentStore
+	banners    *BannerStore
+	logWriter  *PrettyLogWriter
+	logForward chan string
+	uploadSeq  int64
+}
+
+// NotificationKind is a user-toggleable category of push notifications.
+type NotificationKind struct {
+	Key         string
+	Title       string
+	Description string
+	Default     bool
+}
+
+// notificationKinds lists every notification a user can turn on or off.
+var notificationKinds = []NotificationKind{
+	{Key: "broadcast", Title: "📣 Новости и рассылки", Description: "Сообщения и анонсы от администрации", Default: true},
+	{Key: "payment", Title: "💳 Платежи", Description: "Подтверждения оплат и покупок", Default: true},
+	{Key: "premium", Title: "⭐ Премиум", Description: "Активация и продление премиума", Default: true},
+	{Key: "upload", Title: "📤 Загрузки", Description: "Итоги загрузки файлов в облако", Default: true},
+	{Key: "account", Title: "🔐 Аккаунт", Description: "Смена пароля и изменения доступа", Default: true},
+}
+
+func notificationKind(key string) (NotificationKind, bool) {
+	for _, kind := range notificationKinds {
+		if kind.Key == key {
+			return kind, true
+		}
+	}
+	return NotificationKind{}, false
 }
 
 type User struct {

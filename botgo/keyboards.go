@@ -25,7 +25,10 @@ func requestReviewKeyboard(id int64) *InlineKeyboardMarkup {
 	return keyboard([][]InlineKeyboardButton{{{Text: "✅ Одобрить", CallbackData: fmt.Sprintf("approve:%d", id)}, {Text: "❌ Отклонить", CallbackData: fmt.Sprintf("reject:%d", id)}}})
 }
 
-func (a *App) accountKeyboard(lang string) *InlineKeyboardMarkup {
+// accountKeyboard builds the shared main menu. The layout is identical for every
+// user; admins simply get an extra "Войти в панель" button at the bottom. Support
+// and Donate sit on one row, Info and Language on the next (two columns each).
+func (a *App) accountKeyboard(lang string, isAdmin bool) *InlineKeyboardMarkup {
 	suffix := "ru"
 	if lang == "en" {
 		suffix = "en"
@@ -38,20 +41,54 @@ func (a *App) accountKeyboard(lang string) *InlineKeyboardMarkup {
 	promo := a.content.Button("promo_" + suffix)
 	info := a.content.Button("info_" + suffix)
 	language := a.content.Button("language_" + suffix)
+	notifications := a.content.Button("notifications_" + suffix)
 	rows := [][]InlineKeyboardButton{{{Text: cloud, URL: a.cfg.NextcloudURL}}, {{Text: changePassword, CallbackData: "account:change_password"}}}
 	storagePromo := []InlineKeyboardButton{}
 	if a.storageSalesEnabled() {
 		storagePromo = append(storagePromo, InlineKeyboardButton{Text: buyStorage, CallbackData: "account:buy_storage"})
 	}
-	storagePromo = append(storagePromo, InlineKeyboardButton{Text: promo, CallbackData: "account:promo"})
-	rows = append(rows, storagePromo)
+	if a.cfg.EnablePromoBlock {
+		storagePromo = append(storagePromo, InlineKeyboardButton{Text: promo, CallbackData: "account:promo"})
+	}
+	if len(storagePromo) > 0 {
+		rows = append(rows, storagePromo)
+	}
+	rows = append(rows, []InlineKeyboardButton{{Text: notifications, CallbackData: "account:notifications"}})
+	supportDonate := []InlineKeyboardButton{}
 	if a.cfg.EnableSupportBlock {
-		rows = append(rows, []InlineKeyboardButton{{Text: support, CallbackData: "account:support"}})
+		supportDonate = append(supportDonate, InlineKeyboardButton{Text: support, CallbackData: "account:support"})
 	}
 	if a.cfg.EnableDonateBlock {
-		rows = append(rows, []InlineKeyboardButton{{Text: donate, CallbackData: "account:donate"}})
+		supportDonate = append(supportDonate, InlineKeyboardButton{Text: donate, CallbackData: "account:donate"})
+	}
+	if len(supportDonate) > 0 {
+		rows = append(rows, supportDonate)
 	}
 	rows = append(rows, []InlineKeyboardButton{{Text: info, CallbackData: "account:info"}, {Text: language, CallbackData: "account:language"}})
+	if isAdmin {
+		panelText := "🛠️ Войти в панель"
+		if suffix == "en" {
+			panelText = "🛠️ Admin panel"
+		}
+		rows = append(rows, []InlineKeyboardButton{{Text: panelText, CallbackData: "admin"}})
+	}
+	return keyboard(rows)
+}
+
+func notificationsKeyboard(prefs map[string]bool) *InlineKeyboardMarkup {
+	rows := [][]InlineKeyboardButton{}
+	for _, kind := range notificationKinds {
+		enabled := kind.Default
+		if value, ok := prefs[kind.Key]; ok {
+			enabled = value
+		}
+		mark := "⬜"
+		if enabled {
+			mark = "✅"
+		}
+		rows = append(rows, []InlineKeyboardButton{{Text: mark + " " + kind.Title, CallbackData: "account:notify:" + kind.Key}})
+	}
+	rows = append(rows, []InlineKeyboardButton{{Text: "⬅️ Назад", CallbackData: "account:home"}})
 	return keyboard(rows)
 }
 

@@ -67,15 +67,15 @@ func (a *App) handleUpload(msg *Message) {
 	}
 	a.uploadSeq++
 	job := UploadJob{
-		TelegramID:      user.TelegramID,
-		ChatID:          msg.Chat.ID,
-		FileID:          fileID,
-		Filename:        filename,
-		FileSize:        size,
-		Lang:            langOf(user),
-		IsSupporter:     isSupporter,
-		Priority:        priority,
-		Seq:             a.uploadSeq,
+		TelegramID:  user.TelegramID,
+		ChatID:      msg.Chat.ID,
+		FileID:      fileID,
+		Filename:    filename,
+		FileSize:    size,
+		Lang:        langOf(user),
+		IsSupporter: isSupporter,
+		Priority:    priority,
+		Seq:         a.uploadSeq,
 	}
 	a.batches.add(a, job, 0)
 	position := a.uploads.Put(job)
@@ -121,14 +121,22 @@ func (a *App) processUpload(job UploadJob) {
 	a.batches.set(a, job, "done", remote, "", "")
 	if a.batches.allDone(job.TelegramID) {
 		footer := a.storageTextFresh(user)
-		if a.batches.hasFailures(job.TelegramID) {
-			_ = a.sendEventSticker(job.ChatID, "error")
-		} else {
-			_ = a.sendEventSticker(job.ChatID, "upload_ok")
+		if a.db.NotificationEnabled(job.TelegramID, "upload") {
+			if a.batches.hasFailures(job.TelegramID) {
+				_ = a.sendEventSticker(job.ChatID, "error")
+			} else {
+				_ = a.sendEventSticker(job.ChatID, "upload_ok")
+			}
 		}
 		a.batches.set(a, job, "done", remote, "", footer)
 	}
 	log.Printf("upload completed: telegram_id=%d remote=%s size=%d", job.TelegramID, remote, job.FileSize)
+	if job.FileSize > 1024*1024*1024 {
+		a.auditEvent("📤", "Большая загрузка в облако",
+			"Пользователь: <code>"+strconv.FormatInt(job.TelegramID, 10)+"</code>",
+			"Файл: <code>"+esc(job.Filename)+"</code>",
+			"Размер: <b>"+formatBytes(job.FileSize)+"</b>")
+	}
 }
 
 func (a *App) accountText(user *User) string {
