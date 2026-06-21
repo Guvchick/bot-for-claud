@@ -1,0 +1,147 @@
+{
+  "/Users/guvchick/NextCloud-TG-bot/botgo/admin_extra.go": {
+    "mtime": 1782041706.097501,
+    "ast_hash": "f6c4688fe91f895e3dde2ac38ba61d6e",
+    "semantic_hash": "f6c4688fe91f895e3dde2ac38ba61d6e"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/app.go": {
+    "mtime": 1782041706.0976474,
+    "ast_hash": "72143fecdf24cb5e2da99305d8b2f5ed",
+    "semantic_hash": "72143fecdf24cb5e2da99305d8b2f5ed"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/backups.go": {
+    "mtime": 1782041706.0977411,
+    "ast_hash": "2ecd819a81ba2797ac0840f8d4a93cba",
+    "semantic_hash": "2ecd819a81ba2797ac0840f8d4a93cba"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/cloud_clients.go": {
+    "mtime": 1782041706.0978673,
+    "ast_hash": "8ba8770ee0653af6829066c7c6181308",
+    "semantic_hash": "8ba8770ee0653af6829066c7c6181308"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/config.go": {
+    "mtime": 1782041706.0981138,
+    "ast_hash": "4f520e43c407a7ac0a84e335c7dc7ba1",
+    "semantic_hash": "4f520e43c407a7ac0a84e335c7dc7ba1"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/content_store.go": {
+    "mtime": 1782041706.098253,
+    "ast_hash": "25180759b9117615b618979bc494c4a3",
+    "semantic_hash": "25180759b9117615b618979bc494c4a3"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/db_client.go": {
+    "mtime": 1782041706.0983946,
+    "ast_hash": "e69ae12264799f8203d313504d0454dc",
+    "semantic_hash": "e69ae12264799f8203d313504d0454dc"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/go.mod": {
+    "mtime": 1782041706.0984912,
+    "ast_hash": "9f20e9aa445f1aa33872315f4fd16ab7",
+    "semantic_hash": "9f20e9aa445f1aa33872315f4fd16ab7"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/handlers_account.go": {
+    "mtime": 1782041706.0987246,
+    "ast_hash": "32830e0d65118c28313921e901444410",
+    "semantic_hash": "32830e0d65118c28313921e901444410"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/handlers_admin.go": {
+    "mtime": 1782041706.0988963,
+    "ast_hash": "fa55376f2cc7dbc2c4933dd5728af0ac",
+    "semantic_hash": "fa55376f2cc7dbc2c4933dd5728af0ac"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/handlers_misc.go": {
+    "mtime": 1782041706.0990176,
+    "ast_hash": "55952c326c7b923bc9a5d99e4155144b",
+    "semantic_hash": "55952c326c7b923bc9a5d99e4155144b"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/handlers_upload.go": {
+    "mtime": 1782041706.0991342,
+    "ast_hash": "aa807d382154d7ced82fe0e31d0829b3",
+    "semantic_hash": "aa807d382154d7ced82fe0e31d0829b3"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/keyboards.go": {
+    "mtime": 1782041706.0992587,
+    "ast_hash": "8a9165a1a3d2e5017dcfd0965a23d2d5",
+    "semantic_hash": "8a9165a1a3d2e5017dcfd0965a23d2d5"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/logger.go": {
+    "mtime": 1782041706.0993643,
+    "ast_hash": "891b67fc273b235a97f338dcfc9b7cd7",
+    "semantic_hash": "891b67fc273b235a97f338dcfc9b7cd7"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/main.go": {
+    "mtime": 1782041706.0994382,
+    "ast_hash": "98ab3c79c3a0e5fcced00e8433fecdca",
+    "semantic_hash": "98ab3c79c3a0e5fcced00e8433fecdca"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/models.go": {
+    "mtime": 1782041706.0995615,
+    "ast_hash": "d81ead89b6e09b1ad7db3fbc1e84baa8",
+    "semantic_hash": "d81ead89b6e09b1ad7db3fbc1e84baa8"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/notifications.go": {
+    "mtime": 1782041706.0996616,
+    "ast_hash": "10e6cd427108269c06ea816052537c1f",
+    "semantic_hash": "10e6cd427108269c06ea816052537c1f"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/payment_providers.go": {
+    "mtime": 1782041706.099771,
+    "ast_hash": "fcd06ddadb1de1b315156d287b2d8186",
+    "semantic_hash": "fcd06ddadb1de1b315156d287b2d8186"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/payments.go": {
+    "mtime": 1782041706.0998974,
+    "ast_hash": "52c3aaf05d1c4dc7dc9f400280e1971a",
+    "semantic_hash": "52c3aaf05d1c4dc7dc9f400280e1971a"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/quota_cache.go": {
+    "mtime": 1782041706.0999794,
+    "ast_hash": "32a8563ae6eb2cde8cec70c6b156a8c1",
+    "semantic_hash": "32a8563ae6eb2cde8cec70c6b156a8c1"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/redis.go": {
+    "mtime": 1782041706.100082,
+    "ast_hash": "9960010978cb70581bd2e9b97a58d932",
+    "semantic_hash": "9960010978cb70581bd2e9b97a58d932"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/render.go": {
+    "mtime": 1782041706.1001716,
+    "ast_hash": "e43e0dbec2dabd46ad8809b9bbf48b0e",
+    "semantic_hash": "e43e0dbec2dabd46ad8809b9bbf48b0e"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/stickers.go": {
+    "mtime": 1782041706.10029,
+    "ast_hash": "8b683824b72ee6ee6ac21379f2693898",
+    "semantic_hash": "8b683824b72ee6ee6ac21379f2693898"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/telegram.go": {
+    "mtime": 1782041706.1003933,
+    "ast_hash": "53fe8b3be8a0a3b4937dcd4d734b529a",
+    "semantic_hash": "53fe8b3be8a0a3b4937dcd4d734b529a"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/upload_batches.go": {
+    "mtime": 1782041706.1004932,
+    "ast_hash": "95893d0dd71d8070fb385cb7dee3273d",
+    "semantic_hash": "95893d0dd71d8070fb385cb7dee3273d"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/upload_queue.go": {
+    "mtime": 1782041706.1005714,
+    "ast_hash": "48ae59b50f1bc7cf5f3aa5dac56abad1",
+    "semantic_hash": "48ae59b50f1bc7cf5f3aa5dac56abad1"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/botgo/utils.go": {
+    "mtime": 1782041706.10067,
+    "ast_hash": "099c98bec9090aa8e81ffabe42320e1d",
+    "semantic_hash": "099c98bec9090aa8e81ffabe42320e1d"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/README.md": {
+    "mtime": 1782041706.0971694,
+    "ast_hash": "402a805403abd77deaa5f5e94f9d89df",
+    "semantic_hash": "402a805403abd77deaa5f5e94f9d89df"
+  },
+  "/Users/guvchick/NextCloud-TG-bot/docker-compose.yml": {
+    "mtime": 1782041706.100752,
+    "ast_hash": "b17fa248ffd2e1647e5b2634f090a360",
+    "semantic_hash": "b17fa248ffd2e1647e5b2634f090a360"
+  }
+}
