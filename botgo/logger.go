@@ -29,12 +29,11 @@ const (
 	logError
 )
 
-var levelColors = map[int]string{
-	logDebug: "90", // bright black / gray
-	logInfo:  "36", // cyan
-	logWarn:  "33", // yellow
-	logError: "31", // red
-}
+const (
+	ansiReset = "\x1b[0m"
+	ansiDim   = "\x1b[38;5;244m" // muted gray for timestamps
+	ansiRule  = "\x1b[38;5;240m" // faint separators / continuation bars
+)
 
 func NewPrettyLogWriter(console, file io.Writer, level string, color bool) *PrettyLogWriter {
 	return &PrettyLogWriter{console: console, file: file, minLevel: parseLogLevel(level), color: color}
@@ -62,7 +61,7 @@ func (w *PrettyLogWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	if w.console != nil {
 		if w.color {
-			_, _ = io.WriteString(w.console, colorize(level, plain))
+			_, _ = io.WriteString(w.console, styleConsole(timestamp, label, mark, line))
 		} else {
 			_, _ = io.WriteString(w.console, plain)
 		}
@@ -78,12 +77,50 @@ func (w *PrettyLogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func colorize(level int, text string) string {
-	code, ok := levelColors[level]
-	if !ok {
-		return text
+// styleConsole renders a richly designed console line: a dimmed timestamp, a bold
+// colored level chip, the emoji marker and a level-tinted message. Multi-line
+// messages (stack traces) get a faint vertical gutter on continuation lines.
+func styleConsole(timestamp, label, mark, message string) string {
+	chip := levelChip(label)
+	tint := msgTint(label)
+	lines := strings.Split(message, "\n")
+	var b strings.Builder
+	b.WriteString(ansiDim + timestamp + ansiReset + " " + chip + " " + mark + "  " + tint + lines[0] + ansiReset + "\n")
+	for _, cont := range lines[1:] {
+		b.WriteString("                         " + ansiRule + "┆ " + ansiReset + tint + cont + ansiReset + "\n")
 	}
-	return "\x1b[" + code + "m" + strings.TrimRight(text, "\n") + "\x1b[0m\n"
+	return b.String()
+}
+
+// levelChip is a bold, padded badge with a per-level background color.
+func levelChip(label string) string {
+	bg, fg := 39, 231 // INFO: white on blue
+	switch label {
+	case "DEBUG":
+		bg, fg = 240, 253 // gray
+	case "WARN":
+		bg, fg = 214, 16 // black on amber
+	case "ERROR":
+		bg, fg = 196, 231 // white on red
+	case "EVENT":
+		bg, fg = 135, 231 // white on purple
+	}
+	return fmt.Sprintf("\x1b[1;48;5;%d;38;5;%dm %-5s \x1b[0m", bg, fg, label)
+}
+
+// msgTint colors the message body for the louder levels and leaves INFO/EVENT in
+// the terminal's default foreground for readability.
+func msgTint(label string) string {
+	switch label {
+	case "DEBUG":
+		return "\x1b[38;5;245m"
+	case "WARN":
+		return "\x1b[38;5;214m"
+	case "ERROR":
+		return "\x1b[38;5;203m"
+	default:
+		return ""
+	}
 }
 
 // classifyLog maps a raw log line to a level, a short label and an emoji marker.

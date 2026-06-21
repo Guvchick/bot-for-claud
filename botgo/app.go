@@ -138,16 +138,36 @@ func (a *App) printStartupBanner() {
 	if a.banners != nil {
 		banners = len(a.banners.Keys())
 	}
+	color := colorEnabled()
+	paint := func(code, s string) string {
+		if !color {
+			return s
+		}
+		return "\x1b[" + code + "m" + s + "\x1b[0m"
+	}
+	const (
+		accent = "38;5;44"   // cyan border
+		title  = "1;38;5;81" // bold light cyan
+		key    = "38;5;244"  // dim labels
+		val    = "38;5;231"  // bright values
+		rule   = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	)
+	bar := paint(accent, "  ┃")
+	row := func(label, value string) string {
+		return bar + "  " + paint(key, fmt.Sprintf("%-11s", label)) + paint(val, value)
+	}
 	fmt.Println()
-	fmt.Println("  ☁️  NextCloud × Telegram Bot  ───────────────────────")
-	fmt.Println("   • Nextcloud : " + a.cfg.NextcloudURL)
-	fmt.Println("   • Telegram  : " + mode)
-	fmt.Printf("   • Workers   : %d\n", a.cfg.UploadWorkers)
-	fmt.Printf("   • Max upload: %d MB (chunk %d MB)\n", a.cfg.TelegramMaxDownloadMB, a.cfg.UploadChunkSizeMB)
-	fmt.Println("   • Log group : " + group)
-	fmt.Printf("   • Banners   : %d configured\n", banners)
-	fmt.Println("   • Webhook   : " + a.cfg.WebhookListenAddr)
-	fmt.Println("  ─────────────────────────────────────────────────────")
+	fmt.Println(paint(accent, "  ┏"+rule))
+	fmt.Println(bar + "  " + paint(title, "☁️  NextCloud × Telegram Bot"))
+	fmt.Println(paint(accent, "  ┣"+rule))
+	fmt.Println(row("Nextcloud", a.cfg.NextcloudURL))
+	fmt.Println(row("Telegram", mode))
+	fmt.Println(row("Workers", fmt.Sprintf("%d", a.cfg.UploadWorkers)))
+	fmt.Println(row("Max upload", fmt.Sprintf("%d MB · chunk %d MB", a.cfg.TelegramMaxDownloadMB, a.cfg.UploadChunkSizeMB)))
+	fmt.Println(row("Log group", group))
+	fmt.Println(row("Banners", fmt.Sprintf("%d configured", banners)))
+	fmt.Println(row("Webhook", a.cfg.WebhookListenAddr))
+	fmt.Println(paint(accent, "  ┗"+rule))
 	fmt.Println()
 	log.Printf("bot started: nextcloud=%s telegram_local_mode=%v workers=%d max_upload_mb=%d chunk_mb=%d log_group=%v banners=%d",
 		a.cfg.NextcloudURL, a.cfg.TelegramLocalMode, a.cfg.UploadWorkers, a.cfg.TelegramMaxDownloadMB, a.cfg.UploadChunkSizeMB, a.cfg.LogGroupID != 0, banners)
